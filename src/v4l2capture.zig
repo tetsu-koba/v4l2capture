@@ -154,7 +154,11 @@ pub fn capture(alc: std.mem.Allocator, devname: []const u8, width: u32, height: 
     defer munmapBuffer(alc);
     try enqueueBuffers();
     try streamStart();
-    var enqueue_index = try makeImage(outfile);
-    try enqueueBuffer(enqueue_index);
-    try streamStop();
+    defer streamStop() catch unreachable;
+    var buf: [128]u8 = undefined;
+    for (0..599) |i| {
+        var fname = try std.fmt.bufPrint(&buf, "{s}_{d:0>4}.jpg", .{ outfile, i });
+        var enqueue_index = try makeImage(fname);
+        try enqueueBuffer(enqueue_index);
+    }
 }
