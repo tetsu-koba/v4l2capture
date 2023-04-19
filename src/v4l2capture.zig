@@ -144,20 +144,7 @@ fn closeDevice() void {
     os.close(fd);
 }
 
-pub fn main() !void {
-    const alc = std.heap.page_allocator;
-    const args = try std.process.argsAlloc(alc);
-    defer std.process.argsFree(alc, args);
-
-    if (args.len < 5) {
-        std.debug.print("Usage: {s} /dev/videoX width height out.jpg\n", .{args[0]});
-        os.exit(1);
-    }
-    const devname = std.mem.sliceTo(args[1], 0);
-    const width = try std.fmt.parseInt(u32, args[2], 10);
-    const height = try std.fmt.parseInt(u32, args[3], 10);
-    const outfile = std.mem.sliceTo(args[4], 0);
-
+pub fn capture(alc: std.mem.Allocator, devname: []const u8, width: u32, height: u32, outfile: []const u8) !void {
     try openDevice(devname);
     defer closeDevice();
     try capDevice();
@@ -171,4 +158,3 @@ pub fn main() !void {
     try enqueueBuffer(enqueue_index);
     try streamStop();
 }
-
