@@ -112,16 +112,14 @@ fn streamStart() !void {
     try xioctl(fd, c.VIDIOC_STREAMON, @ptrToInt(&t));
 }
 
-fn makeImage(outfile: []const u8) !u32 {
+fn makeImage(out_fd: std.fs.File) !u32 {
     var fds: [1]os.pollfd = .{.{ .fd = fd, .events = os.linux.POLL.IN, .revents = 0 }};
     _ = try os.poll(&fds, 5000);
     var buf: c.struct_v4l2_buffer = undefined;
     buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = c.V4L2_MEMORY_MMAP;
     try xioctl(fd, c.VIDIOC_DQBUF, @ptrToInt(&buf));
-    var out = try std.fs.cwd().createFile(outfile, .{});
-    defer out.close();
-    const w = out.writer();
+    const w = out_fd.writer();
     try w.writeAll(buffers[buf.index].start[0..buffers[buf.index].length]);
     return buf.index;
 }
@@ -145,6 +143,8 @@ fn closeDevice() void {
 }
 
 pub fn capture(alc: std.mem.Allocator, devname: []const u8, width: u32, height: u32, outfile: []const u8) !void {
+    var out_fd = try std.fs.cwd().createFile(outfile, .{});
+    defer out_fd.close();
     try openDevice(devname);
     defer closeDevice();
     try capDevice();
@@ -155,10 +155,8 @@ pub fn capture(alc: std.mem.Allocator, devname: []const u8, width: u32, height: 
     try enqueueBuffers();
     try streamStart();
     defer streamStop() catch unreachable;
-    var buf: [128]u8 = undefined;
-    for (0..599) |i| {
-        var fname = try std.fmt.bufPrint(&buf, "{s}_{d:0>4}.jpg", .{ outfile, i });
-        var enqueue_index = try makeImage(fname);
+    for (0..599) |_| {
+        var enqueue_index = try makeImage(out_fd);
         try enqueueBuffer(enqueue_index);
     }
 }
