@@ -14,19 +14,35 @@ pub const Capturer = struct {
     n_buffers: u32 = undefined,
     buffers: []Buffer = undefined,
     fd: os.fd_t = undefined,
+    alc: std.mem.Allocator,
+    devname: []const u8,
+    width: u32,
+    height: u32,
 
     const MIN_BUFFERS = 3;
     const Self = @This();
 
-    pub fn init() Capturer {
-        return Capturer{};
+    pub fn init(alc: std.mem.Allocator, devname: []const u8, width: u32, height: u32) !Capturer {
+        var self = Capturer{
+            .alc = alc,
+            .devname = devname,
+            .width = width,
+            .height = height,
+        };
+        try self.openDevice();
+        errdefer self.closeDevice();
+        try self.capDevice();
+        try self.setDevice();
+        try self.requestBuffer();
+        try self.mapBuffer();
+        errdefer self.munmapBuffer();
+        try self.enqueueBuffers();
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
-        _ = self;
-        //self.alc.free(self.err_msg_buf);
-        //self.alc.free(self.dbuf);
-        //self.alc.free(self.payload_buf);
+        self.munmapBuffer();
+        self.closeDevice();
     }
 
     fn xioctl(self: *Self, request: u32, arg: usize) !void {
@@ -41,8 +57,8 @@ pub const Capturer = struct {
         }
     }
 
-    fn openDevice(self: *Self, devname: []const u8) !void {
-        self.fd = try os.open(devname, os.O.RDWR, 0o664);
+    fn openDevice(self: *Self) !void {
+        self.fd = try os.open(self.devname, os.O.RDWR, 0o664);
     }
 
     fn capDevice(self: *Self) !void {
@@ -58,19 +74,19 @@ pub const Capturer = struct {
         }
     }
 
-    fn setDevice(self: *Self, width: u32, height: u32) !void {
+    fn setDevice(self: *Self) !void {
         var fmt: c.struct_v4l2_format = undefined;
         @memset(@ptrCast([*]u8, &fmt), 0, @sizeOf(c.struct_v4l2_format));
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        fmt.fmt.pix.width = width;
-        fmt.fmt.pix.height = height;
+        fmt.fmt.pix.width = self.width;
+        fmt.fmt.pix.height = self.height;
         fmt.fmt.pix.pixelformat = c.V4L2_PIX_FMT_MJPEG;
         fmt.fmt.pix.field = c.V4L2_FIELD_ANY;
         try self.xioctl(c.VIDIOC_S_FMT, @ptrToInt(&fmt));
         @memset(@ptrCast([*]u8, &fmt), 0, @sizeOf(c.struct_v4l2_format));
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_G_FMT, @ptrToInt(&fmt));
-        if (fmt.fmt.pix.width != width or fmt.fmt.pix.height != height or fmt.fmt.pix.pixelformat != c.V4L2_PIX_FMT_MJPEG) {
+        if (fmt.fmt.pix.width != self.width or fmt.fmt.pix.height != self.height or fmt.fmt.pix.pixelformat != c.V4L2_PIX_FMT_MJPEG) {
             log.err("Requested format is not supported\n", .{});
             unreachable;
         }
@@ -90,8 +106,8 @@ pub const Capturer = struct {
         }
     }
 
-    fn mapBuffer(self: *Self, alc: std.mem.Allocator) !void {
-        self.buffers = try alc.alloc(Buffer, self.n_buffers);
+    fn mapBuffer(self: *Self) !void {
+        self.buffers = try self.alc.alloc(Buffer, self.n_buffers);
         var n_buffer: u32 = 0;
         while (n_buffer < self.n_buffers) : (n_buffer += 1) {
             var buff: c.struct_v4l2_buffer = undefined;
@@ -143,30 +159,21 @@ pub const Capturer = struct {
         try self.xioctl(c.VIDIOC_STREAMOFF, @ptrToInt(&t));
     }
 
-    fn munmapBuffer(self: *Self, alc: std.mem.Allocator) void {
+    fn munmapBuffer(self: *Self) void {
         var i: usize = 0;
         while (i < self.n_buffers) : (i += 1) {
             os.munmap(self.buffers[i].start);
         }
-        alc.free(self.buffers);
-        self.buffers = undefined;
+        self.alc.free(self.buffers);
     }
 
     fn closeDevice(self: *Self) void {
         os.close(self.fd);
     }
 
-    pub fn capture(self: *Self, alc: std.mem.Allocator, devname: []const u8, width: u32, height: u32, outfile: []const u8) !void {
+    pub fn capture(self: *Self, outfile: []const u8) !void {
         var out_fd = try std.fs.cwd().createFile(outfile, .{});
         defer out_fd.close();
-        try self.openDevice(devname);
-        defer self.closeDevice();
-        try self.capDevice();
-        try self.setDevice(width, height);
-        try self.requestBuffer();
-        try self.mapBuffer(alc);
-        defer self.munmapBuffer(alc);
-        try self.enqueueBuffers();
         try self.streamStart();
         defer self.streamStop() catch unreachable;
         for (0..599) |_| {

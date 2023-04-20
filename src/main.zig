@@ -15,7 +15,7 @@ pub fn main() !void {
     const height = try std.fmt.parseInt(u32, args[3], 10);
     const outfile = std.mem.sliceTo(args[4], 0);
 
-    var cap = v.Capturer.init();
+    var cap = try v.Capturer.init(alc, devname, width, height);
     defer cap.deinit();
-    try cap.capture(alc, devname, width, height, outfile);
+    try cap.capture(outfile);
 }
