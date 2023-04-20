@@ -142,18 +142,6 @@ pub const Capturer = struct {
         try self.xioctl(c.VIDIOC_STREAMON, @ptrToInt(&t));
     }
 
-    fn makeImage(self: *Self, out_fd: std.fs.File) !u32 {
-        var fds: [1]os.pollfd = .{.{ .fd = self.fd, .events = os.linux.POLL.IN, .revents = 0 }};
-        _ = try os.poll(&fds, 5000);
-        var buf: c.struct_v4l2_buffer = undefined;
-        buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = c.V4L2_MEMORY_MMAP;
-        try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
-        const w = out_fd.writer();
-        try w.writeAll(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
-        return buf.index;
-    }
-
     fn streamStop(self: *Self) !void {
         const t: c.enum_v4l2_buf_type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_STREAMOFF, @ptrToInt(&t));
@@ -174,11 +162,24 @@ pub const Capturer = struct {
     pub fn capture(self: *Self, outfile: []const u8) !void {
         var out_fd = try std.fs.cwd().createFile(outfile, .{});
         defer out_fd.close();
+        const w = out_fd.writer();
+
         try self.streamStart();
         defer self.streamStop() catch unreachable;
+
+        var buf: c.struct_v4l2_buffer = undefined;
+        buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = c.V4L2_MEMORY_MMAP;
+        var fds: [1]os.pollfd = .{.{ .fd = self.fd, .events = os.linux.POLL.IN, .revents = 0 }};
         for (0..599) |_| {
-            var enqueue_index = try self.makeImage(out_fd);
-            try self.enqueueBuffer(enqueue_index);
+            const nevent = try os.poll(&fds, 5000);
+            if (nevent == 0) {
+                // timeout
+                break;
+            }
+            try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
+            try w.writeAll(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
+            try self.enqueueBuffer(buf.index);
         }
     }
 };
