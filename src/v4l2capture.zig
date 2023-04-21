@@ -24,6 +24,8 @@ const Buffer = struct {
 };
 
 pub const Capturer = struct {
+    verbose: bool = false,
+    running: bool = true,
     n_buffers: u32 = undefined,
     buffers: []Buffer = undefined,
     fd: os.fd_t = undefined,
@@ -172,10 +174,35 @@ pub const Capturer = struct {
         os.close(self.fd);
     }
 
+    fn handleSignals(self: *Self, signal_fd: os.fd_t) !void {
+        var sig_buf: [@sizeOf(os.linux.signalfd_siginfo)]u8 align(8) = undefined;
+        if (sig_buf.len != try os.read(signal_fd, &sig_buf)) {
+            return os.ReadError.ReadError;
+        }
+        const info = @ptrCast(*os.linux.signalfd_siginfo, &sig_buf);
+        switch (info.signo) {
+            os.linux.SIG.INT => {
+                log.info("{d}:Got SIGINT", .{time.milliTimestamp()});
+                self.running = false;
+            },
+            os.linux.SIG.TERM => {
+                log.info("{d}:Got SIGTERM", .{time.milliTimestamp()});
+                self.running = false;
+            },
+            os.linux.SIG.USR1 => {
+                log.info("{d}:Set verbose=false", .{time.milliTimestamp()});
+                self.verbose = false;
+            },
+            os.linux.SIG.USR2 => {
+                log.info("{d}:Set verbose=true", .{time.milliTimestamp()});
+                self.verbose = true;
+            },
+            else => unreachable,
+        }
+    }
+
     pub fn capture(self: *Self, outfile: []const u8) !void {
         const timeout = 5000;
-        var verbose = false;
-        var running = true;
         var out_fd = try std.fs.cwd().createFile(outfile, .{});
         defer out_fd.close();
         const w = out_fd.writer();
@@ -203,12 +230,12 @@ pub const Capturer = struct {
         };
         try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, signal_event.data.fd, &signal_event);
 
-        while (running) {
+        while (self.running) {
             var events: [MAX_EVENT]os.linux.epoll_event = .{};
-            const event_count = os.epoll_wait(epoll_fd, events[0..], timeout);
+            const event_count = os.epoll_wait(epoll_fd, &events, timeout);
             if (event_count == 0) {
                 log.info("{d}:timeout", .{time.milliTimestamp()});
-                continue;
+                self.running = false;
             }
             for (events[0..event_count]) |ev| {
                 if (ev.data.fd == read_event.data.fd) {
@@ -216,30 +243,7 @@ pub const Capturer = struct {
                     try w.writeAll(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
                     try self.enqueueBuffer(buf.index);
                 } else if (ev.data.fd == signal_event.data.fd) {
-                    var sig_buf: [@sizeOf(os.linux.signalfd_siginfo)]u8 align(8) = undefined;
-                    if (sig_buf.len != try os.read(signal_event.data.fd, &sig_buf)) {
-                        return os.ReadError.ReadError;
-                    }
-                    const info = @ptrCast(*os.linux.signalfd_siginfo, &sig_buf);
-                    switch (info.signo) {
-                        os.linux.SIG.INT => {
-                            log.info("{d}:Got SIGINT", .{time.milliTimestamp()});
-                            running = false;
-                        },
-                        os.linux.SIG.TERM => {
-                            log.info("{d}:Got SIGTERM", .{time.milliTimestamp()});
-                            running = false;
-                        },
-                        os.linux.SIG.USR1 => {
-                            log.info("{d}:Set verbose=false", .{time.milliTimestamp()});
-                            verbose = false;
-                        },
-                        os.linux.SIG.USR2 => {
-                            log.info("{d}:Set verbose=true", .{time.milliTimestamp()});
-                            verbose = true;
-                        },
-                        else => unreachable,
-                    }
+                    try self.handleSignals(signal_event.data.fd);
                 } else {
                     unreachable;
                 }
