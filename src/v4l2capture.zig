@@ -1,9 +1,22 @@
 const std = @import("std");
 const os = std.os;
 const log = std.log;
+const time = std.time;
 const c = @cImport({
     @cInclude("linux/videodev2.h");
 });
+
+const MAX_EVENT = 5;
+
+fn createSignalfd() !os.fd_t {
+    var mask = os.empty_sigset;
+    os.linux.sigaddset(&mask, os.linux.SIG.INT);
+    os.linux.sigaddset(&mask, os.linux.SIG.TERM);
+    os.linux.sigaddset(&mask, os.linux.SIG.USR1);
+    os.linux.sigaddset(&mask, os.linux.SIG.USR2);
+    _ = os.linux.sigprocmask(os.linux.SIG.BLOCK, &mask, null);
+    return try os.signalfd(-1, &mask, os.linux.SFD.CLOEXEC);
+}
 
 const Buffer = struct {
     start: []align(std.mem.page_size) u8,
@@ -160,6 +173,9 @@ pub const Capturer = struct {
     }
 
     pub fn capture(self: *Self, outfile: []const u8) !void {
+        const timeout = 5000;
+        var verbose = false;
+        var running = true;
         var out_fd = try std.fs.cwd().createFile(outfile, .{});
         defer out_fd.close();
         const w = out_fd.writer();
@@ -170,16 +186,64 @@ pub const Capturer = struct {
         var buf: c.struct_v4l2_buffer = undefined;
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
-        var fds: [1]os.pollfd = .{.{ .fd = self.fd, .events = os.linux.POLL.IN, .revents = 0 }};
-        for (0..599) |_| {
-            const nevent = try os.poll(&fds, 5000);
-            if (nevent == 0) {
-                // timeout
-                break;
+
+        const epoll_fd = try os.epoll_create1(os.linux.EPOLL.CLOEXEC);
+        defer os.close(epoll_fd);
+        var read_event = os.linux.epoll_event{
+            .events = os.linux.EPOLL.IN,
+            .data = os.linux.epoll_data{ .fd = self.fd },
+        };
+        try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
+
+        const signal_fd = try createSignalfd();
+        defer os.close(signal_fd);
+        var signal_event = os.linux.epoll_event{
+            .events = os.linux.EPOLL.IN,
+            .data = os.linux.epoll_data{ .fd = signal_fd },
+        };
+        try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, signal_event.data.fd, &signal_event);
+
+        while (running) {
+            var events: [MAX_EVENT]os.linux.epoll_event = .{};
+            const event_count = os.epoll_wait(epoll_fd, events[0..], timeout);
+            if (event_count == 0) {
+                log.info("{d}:timeout", .{time.milliTimestamp()});
+                continue;
             }
-            try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
-            try w.writeAll(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
-            try self.enqueueBuffer(buf.index);
+            for (events[0..event_count]) |ev| {
+                if (ev.data.fd == read_event.data.fd) {
+                    try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
+                    try w.writeAll(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
+                    try self.enqueueBuffer(buf.index);
+                } else if (ev.data.fd == signal_event.data.fd) {
+                    var sig_buf: [@sizeOf(os.linux.signalfd_siginfo)]u8 align(8) = undefined;
+                    if (sig_buf.len != try os.read(signal_event.data.fd, &sig_buf)) {
+                        return os.ReadError.ReadError;
+                    }
+                    const info = @ptrCast(*os.linux.signalfd_siginfo, &sig_buf);
+                    switch (info.signo) {
+                        os.linux.SIG.INT => {
+                            log.info("{d}:Got SIGINT", .{time.milliTimestamp()});
+                            running = false;
+                        },
+                        os.linux.SIG.TERM => {
+                            log.info("{d}:Got SIGTERM", .{time.milliTimestamp()});
+                            running = false;
+                        },
+                        os.linux.SIG.USR1 => {
+                            log.info("{d}:Set verbose=false", .{time.milliTimestamp()});
+                            verbose = false;
+                        },
+                        os.linux.SIG.USR2 => {
+                            log.info("{d}:Set verbose=true", .{time.milliTimestamp()});
+                            verbose = true;
+                        },
+                        else => unreachable,
+                    }
+                } else {
+                    unreachable;
+                }
+            }
         }
     }
 };
