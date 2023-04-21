@@ -26,7 +26,6 @@ const Buffer = struct {
 pub const Capturer = struct {
     verbose: bool = false,
     running: bool = true,
-    n_buffers: u32 = undefined,
     buffers: []Buffer = undefined,
     fd: os.fd_t = undefined,
     alc: std.mem.Allocator,
@@ -48,8 +47,7 @@ pub const Capturer = struct {
         errdefer self.closeDevice();
         try self.capDevice();
         try self.setDevice();
-        try self.requestBuffer();
-        try self.mapBuffer();
+        try self.prepareBuffers();
         errdefer self.munmapBuffer();
         try self.enqueueBuffers();
         return self;
@@ -107,48 +105,42 @@ pub const Capturer = struct {
         }
     }
 
-    fn requestBuffer(self: *Self) !void {
+    fn prepareBuffers(self: *Self) !void {
         var req: c.struct_v4l2_requestbuffers = undefined;
         @memset(@ptrCast([*]u8, &req), 0, @sizeOf(c.struct_v4l2_requestbuffers));
         req.count = Capturer.MIN_BUFFERS;
         req.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         req.memory = c.V4L2_MEMORY_MMAP;
         try self.xioctl(c.VIDIOC_REQBUFS, @ptrToInt(&req));
-        self.n_buffers = req.count;
         if (req.count < MIN_BUFFERS) {
             log.err("Insufficient buffer memory on camera\n", .{});
             unreachable;
         }
-    }
-
-    fn mapBuffer(self: *Self) !void {
-        self.buffers = try self.alc.alloc(Buffer, self.n_buffers);
-        var n_buffer: u32 = 0;
-        while (n_buffer < self.n_buffers) : (n_buffer += 1) {
+        self.buffers = try self.alc.alloc(Buffer, req.count);
+        for (self.buffers, 0..) |_, i| {
             var buff: c.struct_v4l2_buffer = undefined;
             @memset(@ptrCast([*]u8, &buff), 0, @sizeOf(c.struct_v4l2_buffer));
             buff.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
             buff.memory = c.V4L2_MEMORY_MMAP;
-            buff.index = @bitCast(c_uint, n_buffer);
+            buff.index = @intCast(c_uint, i);
             try self.xioctl(c.VIDIOC_QUERYBUF, @ptrToInt(&buff));
-            self.buffers[n_buffer].length = buff.length;
-            self.buffers[n_buffer].start = try os.mmap(null, buff.length, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, self.fd, buff.m.offset);
+            self.buffers[i].length = buff.length;
+            self.buffers[i].start = try os.mmap(null, buff.length, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, self.fd, buff.m.offset);
         }
     }
 
-    fn enqueueBuffer(self: *Self, index: u32) !void {
+    fn enqueueBuffer(self: *Self, index: usize) !void {
         var buf: c.struct_v4l2_buffer = undefined;
         @memset(@ptrCast([*]u8, &buf), 0, @sizeOf(c.struct_v4l2_buffer));
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
-        buf.index = @bitCast(c_uint, index);
+        buf.index = @intCast(c_uint, index);
         try self.xioctl(c.VIDIOC_QBUF, @ptrToInt(&buf));
     }
 
     fn enqueueBuffers(self: *Self) !void {
-        var n_buffer: u32 = 0;
-        while (n_buffer < self.n_buffers) : (n_buffer += 1) {
-            try self.enqueueBuffer(n_buffer);
+        for (self.buffers, 0..) |_, i| {
+            try self.enqueueBuffer(i);
         }
     }
 
@@ -163,8 +155,7 @@ pub const Capturer = struct {
     }
 
     fn munmapBuffer(self: *Self) void {
-        var i: usize = 0;
-        while (i < self.n_buffers) : (i += 1) {
+        for (self.buffers, 0..) |_, i| {
             os.munmap(self.buffers[i].start);
         }
         self.alc.free(self.buffers);
