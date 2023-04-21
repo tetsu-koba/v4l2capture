@@ -1,9 +1,25 @@
 const std = @import("std");
+const log = std.log;
 const os = std.os;
+const time = std.time;
 const v = @import("v4l2capture.zig");
 
 var running: bool = false;
 var outFile: std.fs.File = undefined;
+
+fn signalHandler(signo: c_int) align(1) callconv(.C) void {
+    switch (signo) {
+        os.linux.SIG.INT => {
+            log.info("{d}:Got SIGINT", .{time.milliTimestamp()});
+            running = false;
+        },
+        os.linux.SIG.TERM => {
+            log.info("{d}:Got SIGTERM", .{time.milliTimestamp()});
+            running = false;
+        },
+        else => unreachable,
+    }
+}
 
 fn frameHandler(frame: []const u8) bool {
     outFile.writeAll(frame) catch {
@@ -42,6 +58,14 @@ pub fn main() !void {
 
     var cap = try v.Capturer.init(alc, devname, width, height, framerate);
     defer cap.deinit();
+
+    const action = os.linux.Sigaction{
+        .handler = .{ .handler = &signalHandler },
+        .mask = os.empty_sigset,
+        .flags = 0,
+    };
+    _ = os.linux.sigaction(os.linux.SIG.INT, &action, null);
+    _ = os.linux.sigaction(os.linux.SIG.TERM, &action, null);
     running = true;
     try cap.capture(&frameHandler);
 }

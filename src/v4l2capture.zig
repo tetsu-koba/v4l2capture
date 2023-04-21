@@ -8,16 +8,6 @@ const c = @cImport({
 
 const MAX_EVENT = 5;
 
-fn createSignalfd() !os.fd_t {
-    var mask = os.empty_sigset;
-    os.linux.sigaddset(&mask, os.linux.SIG.INT);
-    os.linux.sigaddset(&mask, os.linux.SIG.TERM);
-    os.linux.sigaddset(&mask, os.linux.SIG.USR1);
-    os.linux.sigaddset(&mask, os.linux.SIG.USR2);
-    _ = os.linux.sigprocmask(os.linux.SIG.BLOCK, &mask, null);
-    return try os.signalfd(-1, &mask, os.linux.SFD.CLOEXEC);
-}
-
 const Buffer = struct {
     start: []align(std.mem.page_size) u8,
     length: usize,
@@ -173,33 +163,6 @@ pub const Capturer = struct {
         os.close(self.fd);
     }
 
-    fn handleSignals(self: *Self, signal_fd: os.fd_t) !void {
-        var sig_buf: [@sizeOf(os.linux.signalfd_siginfo)]u8 align(8) = undefined;
-        if (sig_buf.len != try os.read(signal_fd, &sig_buf)) {
-            return os.ReadError.ReadError;
-        }
-        const info = @ptrCast(*os.linux.signalfd_siginfo, &sig_buf);
-        switch (info.signo) {
-            os.linux.SIG.INT => {
-                log.info("{d}:Got SIGINT", .{time.milliTimestamp()});
-                self.running = false;
-            },
-            os.linux.SIG.TERM => {
-                log.info("{d}:Got SIGTERM", .{time.milliTimestamp()});
-                self.running = false;
-            },
-            os.linux.SIG.USR1 => {
-                log.info("{d}:Set verbose=false", .{time.milliTimestamp()});
-                self.verbose = false;
-            },
-            os.linux.SIG.USR2 => {
-                log.info("{d}:Set verbose=true", .{time.milliTimestamp()});
-                self.verbose = true;
-            },
-            else => unreachable,
-        }
-    }
-
     pub fn capture(self: *Self, frameHandler: *const fn ([]const u8) bool) !void {
         const timeout = 5000;
 
@@ -218,14 +181,6 @@ pub const Capturer = struct {
         };
         try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
 
-        const signal_fd = try createSignalfd();
-        defer os.close(signal_fd);
-        var signal_event = os.linux.epoll_event{
-            .events = os.linux.EPOLL.IN,
-            .data = os.linux.epoll_data{ .fd = signal_fd },
-        };
-        try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, signal_event.data.fd, &signal_event);
-
         var running = true;
         while (running) {
             var events: [MAX_EVENT]os.linux.epoll_event = .{};
@@ -239,8 +194,6 @@ pub const Capturer = struct {
                     try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
                     running = frameHandler(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
                     try self.enqueueBuffer(buf.index);
-                } else if (ev.data.fd == signal_event.data.fd) {
-                    try self.handleSignals(signal_event.data.fd);
                 } else {
                     unreachable;
                 }
