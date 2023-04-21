@@ -1,21 +1,47 @@
 const std = @import("std");
+const os = std.os;
 const v = @import("v4l2capture.zig");
+
+var running: bool = false;
+var outFile: std.fs.File = undefined;
+
+fn frameHandler(frame: []const u8) bool {
+    outFile.writeAll(frame) catch {
+        // TODO err handling
+        return false;
+    };
+    return running;
+}
 
 pub fn main() !void {
     const alc = std.heap.page_allocator;
     const args = try std.process.argsAlloc(alc);
     defer std.process.argsFree(alc, args);
 
-    if (args.len < 5) {
-        std.debug.print("Usage: {s} /dev/videoX width height out.mjpg\n", .{args[0]});
+    if (args.len < 3) {
+        std.debug.print("Usage: {s} /dev/videoX out.mjpg [width height framerate]\ndefault is 640x480@30fps\n", .{args[0]});
         std.os.exit(1);
     }
     const devname = std.mem.sliceTo(args[1], 0);
-    const width = try std.fmt.parseInt(u32, args[2], 10);
-    const height = try std.fmt.parseInt(u32, args[3], 10);
-    const outfile = std.mem.sliceTo(args[4], 0);
+    const outfile = std.mem.sliceTo(args[2], 0);
+    var width: u32 = 640;
+    var height: u32 = 480;
+    var framerate: u32 = 30;
+    if (args.len >= 4) {
+        width = try std.fmt.parseInt(u32, args[3], 10);
+    }
+    if (args.len >= 5) {
+        height = try std.fmt.parseInt(u32, args[4], 10);
+    }
+    if (args.len >= 6) {
+        framerate = try std.fmt.parseInt(u32, args[5], 10);
+    }
 
-    var cap = try v.Capturer.init(alc, devname, width, height);
+    outFile = try std.fs.cwd().createFile(outfile, .{});
+    defer outFile.close();
+
+    var cap = try v.Capturer.init(alc, devname, width, height, framerate);
     defer cap.deinit();
-    try cap.capture(outfile);
+    running = true;
+    try cap.capture(&frameHandler);
 }

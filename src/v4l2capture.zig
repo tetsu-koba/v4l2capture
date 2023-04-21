@@ -25,23 +25,31 @@ const Buffer = struct {
 
 pub const Capturer = struct {
     verbose: bool = false,
-    running: bool = true,
+    running: bool = false,
     buffers: []Buffer = undefined,
     fd: os.fd_t = undefined,
     alc: std.mem.Allocator,
     devname: []const u8,
     width: u32,
     height: u32,
+    framerate: u32,
 
     const MIN_BUFFERS = 3;
     const Self = @This();
 
-    pub fn init(alc: std.mem.Allocator, devname: []const u8, width: u32, height: u32) !Capturer {
+    pub fn init(
+        alc: std.mem.Allocator,
+        devname: []const u8,
+        width: u32,
+        height: u32,
+        framerate: u32,
+    ) !Capturer {
         var self = Capturer{
             .alc = alc,
             .devname = devname,
             .width = width,
             .height = height,
+            .framerate = framerate,
         };
         try self.openDevice();
         errdefer self.closeDevice();
@@ -192,11 +200,8 @@ pub const Capturer = struct {
         }
     }
 
-    pub fn capture(self: *Self, outfile: []const u8) !void {
+    pub fn capture(self: *Self, frameHandler: *const fn ([]const u8) bool) !void {
         const timeout = 5000;
-        var out_fd = try std.fs.cwd().createFile(outfile, .{});
-        defer out_fd.close();
-        const w = out_fd.writer();
 
         try self.streamStart();
         defer self.streamStop() catch unreachable;
@@ -221,7 +226,8 @@ pub const Capturer = struct {
         };
         try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, signal_event.data.fd, &signal_event);
 
-        while (self.running) {
+        var running = true;
+        while (running) {
             var events: [MAX_EVENT]os.linux.epoll_event = .{};
             const event_count = os.epoll_wait(epoll_fd, &events, timeout);
             if (event_count == 0) {
@@ -231,7 +237,7 @@ pub const Capturer = struct {
             for (events[0..event_count]) |ev| {
                 if (ev.data.fd == read_event.data.fd) {
                     try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
-                    try w.writeAll(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
+                    running = frameHandler(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
                     try self.enqueueBuffer(buf.index);
                 } else if (ev.data.fd == signal_event.data.fd) {
                     try self.handleSignals(signal_event.data.fd);
