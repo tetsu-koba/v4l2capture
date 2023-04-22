@@ -45,6 +45,7 @@ pub const Capturer = struct {
         errdefer self.closeDevice();
         try self.capDevice();
         try self.setDevice();
+        try self.setFramerate();
         try self.prepareBuffers();
         errdefer self.munmapBuffer();
         try self.enqueueBuffers();
@@ -100,6 +101,28 @@ pub const Capturer = struct {
         if (fmt.fmt.pix.width != self.width or fmt.fmt.pix.height != self.height or fmt.fmt.pix.pixelformat != c.V4L2_PIX_FMT_MJPEG) {
             log.err("Requested format is not supported\n", .{});
             unreachable;
+        }
+    }
+
+    fn setFramerate(self: *Self) !void {
+        var streamparm: c.struct_v4l2_streamparm = undefined;
+        @memset(@ptrCast([*]u8, &streamparm), 0, @sizeOf(c.struct_v4l2_streamparm));
+        streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        try self.xioctl(c.VIDIOC_G_PARM, @ptrToInt(&streamparm));
+        if (streamparm.parm.capture.capability & c.V4L2_CAP_TIMEPERFRAME != 0) {
+            streamparm.parm.capture.timeperframe.numerator = 1;
+            streamparm.parm.capture.timeperframe.denominator = self.framerate;
+            try self.xioctl(c.VIDIOC_S_PARM, @ptrToInt(&streamparm));
+            @memset(@ptrCast([*]u8, &streamparm), 0, @sizeOf(c.struct_v4l2_streamparm));
+            streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            try self.xioctl(c.VIDIOC_G_PARM, @ptrToInt(&streamparm));
+            const r = streamparm.parm.capture.timeperframe.denominator;
+            if (r != self.framerate) {
+                log.warn("Requested framerate is {d} but set to {d}\n", .{ self.framerate, r });
+                self.framerate = r;
+            }
+        } else {
+            log.warn("Framerate cannot be set.\n", .{});
         }
     }
 
@@ -181,7 +204,9 @@ pub const Capturer = struct {
         };
         try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
 
+        var start_time = time.milliTimestamp();
         var running = true;
+        var frame_count: i64 = 0;
         while (running) {
             var events: [MAX_EVENT]os.linux.epoll_event = .{};
             const event_count = os.epoll_wait(epoll_fd, &events, timeout);
@@ -192,6 +217,7 @@ pub const Capturer = struct {
             for (events[0..event_count]) |ev| {
                 if (ev.data.fd == read_event.data.fd) {
                     try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
+                    frame_count += 1;
                     running = frameHandler(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
                     try self.enqueueBuffer(buf.index);
                 } else {
@@ -199,5 +225,7 @@ pub const Capturer = struct {
                 }
             }
         }
+        const duration = time.milliTimestamp() - start_time;
+        log.info("{d}:duration {d}ms, frame_count {d}, {d:.2}fps", .{ time.milliTimestamp(), duration, frame_count, @intToFloat(f32, frame_count) / @intToFloat(f32, duration) * 1000 });
     }
 };
