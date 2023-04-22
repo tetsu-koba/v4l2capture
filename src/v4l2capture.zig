@@ -209,9 +209,7 @@ pub const Capturer = struct {
         };
         try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
 
-        var start_time = time.milliTimestamp();
         var running = true;
-        var frame_count: i64 = 0;
         while (running) {
             var events: [MAX_EVENT]os.linux.epoll_event = .{};
             const event_count = os.epoll_wait(epoll_fd, &events, timeout);
@@ -222,7 +220,6 @@ pub const Capturer = struct {
             for (events[0..event_count]) |ev| {
                 if (ev.data.fd == read_event.data.fd) {
                     try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
-                    frame_count += 1;
                     running = frameHandler(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
                     try self.enqueueBuffer(buf.index);
                 } else {
@@ -230,7 +227,5 @@ pub const Capturer = struct {
                 }
             }
         }
-        const duration = time.milliTimestamp() - start_time;
-        log.info("{d}:duration {d}ms, frame_count {d}, {d:.2}fps", .{ time.milliTimestamp(), duration, frame_count, @intToFloat(f32, frame_count) / @intToFloat(f32, duration) * 1000 });
     }
 };
