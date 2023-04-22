@@ -98,9 +98,14 @@ pub const Capturer = struct {
         @memset(@ptrCast([*]u8, &fmt), 0, @sizeOf(c.struct_v4l2_format));
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_G_FMT, @ptrToInt(&fmt));
-        if (fmt.fmt.pix.width != self.width or fmt.fmt.pix.height != self.height or fmt.fmt.pix.pixelformat != c.V4L2_PIX_FMT_MJPEG) {
-            log.err("Requested format is not supported\n", .{});
+        if (fmt.fmt.pix.pixelformat != c.V4L2_PIX_FMT_MJPEG) {
+            log.err("MJPEG is not supported\n", .{});
             unreachable;
+        }
+        if (fmt.fmt.pix.width != self.width or fmt.fmt.pix.height != self.height) {
+            log.warn("Requested format is {d}x{d} but set to {d}x{d}.", .{ self.width, self.height, fmt.fmt.pix.width, fmt.fmt.pix.height });
+            self.width = fmt.fmt.pix.width;
+            self.height = fmt.fmt.pix.height;
         }
     }
 
@@ -118,11 +123,11 @@ pub const Capturer = struct {
             try self.xioctl(c.VIDIOC_G_PARM, @ptrToInt(&streamparm));
             const r = streamparm.parm.capture.timeperframe.denominator;
             if (r != self.framerate) {
-                log.warn("Requested framerate is {d} but set to {d}\n", .{ self.framerate, r });
+                log.warn("Requested framerate is {d} but set to {d}.", .{ self.framerate, r });
                 self.framerate = r;
             }
         } else {
-            log.warn("Framerate cannot be set.\n", .{});
+            log.warn("Framerate cannot be set.", .{});
         }
     }
 
