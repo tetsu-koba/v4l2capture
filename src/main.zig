@@ -5,7 +5,8 @@ const time = std.time;
 const v = @import("v4l2capture.zig");
 
 var running: bool = false;
-var outFile: std.fs.File = undefined;
+//var outFile: std.fs.File = undefined;
+var tcp: std.net.Stream = undefined;
 
 fn signalHandler(signo: c_int) align(1) callconv(.C) void {
     switch (signo) {
@@ -22,7 +23,8 @@ fn signalHandler(signo: c_int) align(1) callconv(.C) void {
 }
 
 fn frameHandler(frame: []const u8) bool {
-    outFile.writeAll(frame) catch {
+    //outFile.writeAll(frame) catch {
+    tcp.writeAll(frame) catch {
         // TODO err handling
         return false;
     };
@@ -53,8 +55,12 @@ pub fn main() !void {
         framerate = try std.fmt.parseInt(u32, args[5], 10);
     }
 
-    outFile = try std.fs.cwd().createFile(outfile, .{});
-    defer outFile.close();
+    // outFile = try std.fs.cwd().createFile(outfile, .{});
+    // defer outFile.close();
+
+    // temporary: use outfile as hosthame
+    tcp = try std.net.tcpConnectToHost(alc, outfile, 8999);
+    defer tcp.close();
 
     var cap = try v.Capturer.init(alc, devname, width, height, framerate);
     defer cap.deinit();
