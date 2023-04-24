@@ -40,6 +40,34 @@ fn frameHandler(frame: []const u8) bool {
     return running;
 }
 
+fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
+    const uri = std.Uri.parse(url_string) catch std.Uri{
+        .scheme = "file",
+        .path = url_string,
+        .host = null,
+        .user = null,
+        .password = null,
+        .port = null,
+        .query = null,
+        .fragment = null,
+    };
+    if (mem.eql(u8, uri.scheme, "file")) {
+        if (!mem.eql(u8, uri.path, "")) {
+            log.info("uri.path={s}", .{uri.path});
+            outFile = try std.fs.cwd().createFile(url_string, .{});
+            return true;
+        }
+    } else if (mem.eql(u8, uri.scheme, "tcp")) {
+        if (uri.host) |host| {
+            if (uri.port) |port| {
+                tcp = try std.net.tcpConnectToHost(alc, host, port);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 fn close() void {
     if (outFile) |f| {
         f.close();
@@ -72,36 +100,9 @@ pub fn main() !void {
         framerate = try std.fmt.parseInt(u32, args[5], 10);
     }
 
-    const uri = std.Uri.parse(url_string) catch std.Uri{
-        .scheme = "file",
-        .path = url_string,
-        .host = null,
-        .user = null,
-        .password = null,
-        .port = null,
-        .query = null,
-        .fragment = null,
-    };
-    if (mem.eql(u8, uri.scheme, "file")) {
-        if (!mem.eql(u8, uri.path, "")) {
-            log.info("uri.path={s}", .{uri.path});
-            outFile = try std.fs.cwd().createFile(url_string, .{});
-        } else {
-            log.err("Invalid URL: {s}", .{url_string});
-            os.exit(1);
-        }
-    } else if (mem.eql(u8, uri.scheme, "tcp")) {
-        if (uri.host) |host| {
-            if (uri.port) |port| {
-                tcp = try std.net.tcpConnectToHost(alc, host, port);
-            } else {
-                log.err("Invalid URL: {s}", .{url_string});
-                os.exit(1);
-            }
-        } else {
-            log.err("Invalid URL: {s}", .{url_string});
-            os.exit(1);
-        }
+    if (!try open(alc, url_string)) {
+        log.err("Invalid URL: {s}", .{url_string});
+        os.exit(1);
     }
     defer close();
 
