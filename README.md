@@ -41,3 +41,19 @@ When playing this with ffplay, you need to explicitly specify the frame rate.
 $ ffplay -framerate 30 out.mjpg
 ```
 
+## Sending MJPEG over TCP and remote playback
+
+With the update of 2023/04/24, MJPEG can now be sent over TCP.
+
+On the receiver:
+
+```shell-session
+$ ffplay -hide_banner -autoexit "tcp://:8999?listen=1"
+```
+
+
+On the sender:
+
+```shell-session
+$ zig-out/bin/v4l2capture /dev/video0 tcp://host:8999 320 240 15
+```
