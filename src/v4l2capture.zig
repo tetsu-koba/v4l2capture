@@ -6,8 +6,6 @@ const c = @cImport({
     @cInclude("linux/videodev2.h");
 });
 
-const MAX_EVENT = 5;
-
 const Buffer = struct {
     start: []align(std.mem.page_size) u8,
     length: usize,
@@ -15,7 +13,6 @@ const Buffer = struct {
 
 pub const Capturer = struct {
     verbose: bool = false,
-    running: bool = false,
     buffers: []Buffer = undefined,
     fd: os.fd_t = undefined,
     alc: std.mem.Allocator,
@@ -191,41 +188,25 @@ pub const Capturer = struct {
         os.close(self.fd);
     }
 
-    pub fn capture(self: *Self, frameHandler: *const fn ([]const u8) bool) !void {
-        const timeout = 5000;
-
+    pub fn start(self: *Self) !void {
         try self.streamStart();
-        defer self.streamStop() catch unreachable;
+    }
 
+    pub fn stop(self: *Self) void {
+        self.streamStop() catch unreachable;
+    }
+
+    pub fn getFd(self: *Self) os.fd_t {
+        return self.fd;
+    }
+
+    pub fn capture(self: *Self, frameHandler: *const fn ([]const u8) void) !void {
         var buf: c.struct_v4l2_buffer = undefined;
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
 
-        const epoll_fd = try os.epoll_create1(os.linux.EPOLL.CLOEXEC);
-        defer os.close(epoll_fd);
-        var read_event = os.linux.epoll_event{
-            .events = os.linux.EPOLL.IN,
-            .data = os.linux.epoll_data{ .fd = self.fd },
-        };
-        try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
-
-        var running = true;
-        while (running) {
-            var events: [MAX_EVENT]os.linux.epoll_event = .{};
-            const event_count = os.epoll_wait(epoll_fd, &events, timeout);
-            if (event_count == 0) {
-                log.info("{d}:timeout", .{time.milliTimestamp()});
-                self.running = false;
-            }
-            for (events[0..event_count]) |ev| {
-                if (ev.data.fd == read_event.data.fd) {
-                    try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
-                    running = frameHandler(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
-                    try self.enqueueBuffer(buf.index);
-                } else {
-                    unreachable;
-                }
-            }
-        }
+        try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
+        frameHandler(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
+        try self.enqueueBuffer(buf.index);
     }
 };

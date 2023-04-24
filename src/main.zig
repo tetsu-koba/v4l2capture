@@ -5,13 +5,27 @@ const os = std.os;
 const time = std.time;
 const v = @import("v4l2capture.zig");
 
+const MAX_EVENT = 5;
 var frame_count: i64 = 0;
 var running: bool = false;
 var outFile: ?std.fs.File = null;
 var tcp: ?std.net.Stream = null;
 
-fn signalHandler(signo: c_int) align(1) callconv(.C) void {
-    switch (signo) {
+fn createSignalfd() !os.fd_t {
+    var mask = os.empty_sigset;
+    os.linux.sigaddset(&mask, os.linux.SIG.INT);
+    os.linux.sigaddset(&mask, os.linux.SIG.TERM);
+    _ = os.linux.sigprocmask(os.linux.SIG.BLOCK, &mask, null);
+    return try os.signalfd(-1, &mask, os.linux.SFD.CLOEXEC);
+}
+
+fn handleSignals(signal_fd: os.fd_t) !void {
+    var buf: [@sizeOf(os.linux.signalfd_siginfo)]u8 align(8) = undefined;
+    if (buf.len != try os.read(signal_fd, &buf)) {
+        return os.ReadError.ReadError;
+    }
+    const info = @ptrCast(*os.linux.signalfd_siginfo, &buf);
+    switch (info.signo) {
         os.linux.SIG.INT => {
             log.info("{d}:Got SIGINT", .{time.milliTimestamp()});
             running = false;
@@ -24,20 +38,19 @@ fn signalHandler(signo: c_int) align(1) callconv(.C) void {
     }
 }
 
-fn frameHandler(frame: []const u8) bool {
+fn frameHandler(frame: []const u8) void {
     frame_count += 1;
     if (outFile) |f| {
         f.writeAll(frame) catch |err| {
             log.err("frameHandle: {s}", .{@errorName(err)});
-            return false;
+            running = false;
         };
     } else if (tcp) |t| {
         t.writeAll(frame) catch |err| {
             log.err("frameHandle: {s}", .{@errorName(err)});
-            return false;
+            running = false;
         };
     }
-    return running;
 }
 
 fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
@@ -109,16 +122,45 @@ pub fn main() !void {
     var cap = try v.Capturer.init(alc, devname, width, height, framerate);
     defer cap.deinit();
 
-    const action = os.linux.Sigaction{
-        .handler = .{ .handler = &signalHandler },
-        .mask = os.empty_sigset,
-        .flags = 0,
+    try cap.start();
+    defer cap.stop();
+
+    const epoll_fd = try os.epoll_create1(os.linux.EPOLL.CLOEXEC);
+    defer os.close(epoll_fd);
+    var read_event = os.linux.epoll_event{
+        .events = os.linux.EPOLL.IN,
+        .data = os.linux.epoll_data{ .fd = cap.getFd() },
     };
-    _ = os.linux.sigaction(os.linux.SIG.INT, &action, null);
-    _ = os.linux.sigaction(os.linux.SIG.TERM, &action, null);
+    try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
+
+    const signal_fd = try createSignalfd();
+    defer os.close(signal_fd);
+    var signal_event = os.linux.epoll_event{
+        .events = os.linux.EPOLL.IN,
+        .data = os.linux.epoll_data{ .fd = signal_fd },
+    };
+    try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, signal_event.data.fd, &signal_event);
+    const timeout = 5000;
+
     running = true;
     var start_time = time.milliTimestamp();
-    try cap.capture(&frameHandler);
+    while (running) {
+        var events: [MAX_EVENT]os.linux.epoll_event = .{};
+        const event_count = os.epoll_wait(epoll_fd, &events, timeout);
+        if (event_count == 0) {
+            log.info("{d}:timeout", .{time.milliTimestamp()});
+            continue;
+        }
+        for (events[0..event_count]) |ev| {
+            if (ev.data.fd == read_event.data.fd) {
+                try cap.capture(&frameHandler);
+            } else if (ev.data.fd == signal_event.data.fd) {
+                try handleSignals(signal_event.data.fd);
+            } else {
+                unreachable;
+            }
+        }
+    }
     const duration = time.milliTimestamp() - start_time;
     log.info("{d}:duration {d}ms, frame_count {d}, {d:.2}fps", .{ time.milliTimestamp(), duration, frame_count, @intToFloat(f32, frame_count) / @intToFloat(f32, duration) * 1000 });
 }
