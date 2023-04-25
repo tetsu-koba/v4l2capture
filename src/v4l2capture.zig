@@ -20,6 +20,7 @@ pub const Capturer = struct {
     width: u32,
     height: u32,
     framerate: u32,
+    pixelformat: u32,
 
     const MIN_BUFFERS = 3;
     const Self = @This();
@@ -30,6 +31,7 @@ pub const Capturer = struct {
         width: u32,
         height: u32,
         framerate: u32,
+        pixelformat: []const u8,
     ) !Capturer {
         var self = Capturer{
             .alc = alc,
@@ -37,6 +39,7 @@ pub const Capturer = struct {
             .width = width,
             .height = height,
             .framerate = framerate,
+            .pixelformat = try fourcc(pixelformat),
         };
         try self.openDevice();
         errdefer self.closeDevice();
@@ -52,6 +55,14 @@ pub const Capturer = struct {
     pub fn deinit(self: *Self) void {
         self.munmapBuffer();
         self.closeDevice();
+    }
+
+    fn fourcc(f: []const u8) !u32 {
+        if (f.len != 4) {
+            log.err("Illegal fourcc format: {s}\n", .{f});
+            unreachable;
+        }
+        return @intCast(u32, f[0]) | @intCast(u32, f[1]) << 8 | @intCast(u32, f[2]) << 16 | @intCast(u32, f[3]) << 24;
     }
 
     fn xioctl(self: *Self, request: u32, arg: usize) !void {
@@ -89,20 +100,26 @@ pub const Capturer = struct {
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         fmt.fmt.pix.width = self.width;
         fmt.fmt.pix.height = self.height;
-        fmt.fmt.pix.pixelformat = c.V4L2_PIX_FMT_MJPEG;
+        fmt.fmt.pix.pixelformat = self.pixelformat;
         fmt.fmt.pix.field = c.V4L2_FIELD_ANY;
         try self.xioctl(c.VIDIOC_S_FMT, @ptrToInt(&fmt));
         @memset(@ptrCast([*]u8, &fmt), 0, @sizeOf(c.struct_v4l2_format));
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_G_FMT, @ptrToInt(&fmt));
-        if (fmt.fmt.pix.pixelformat != c.V4L2_PIX_FMT_MJPEG) {
-            log.err("MJPEG is not supported\n", .{});
+        if (fmt.fmt.pix.pixelformat != self.pixelformat) {
+            const p = self.pixelformat;
+            log.err("pixelformat {c}{c}{c}{c} is not supported\n", .{ @truncate(u8, p), @truncate(u8, p >> 8), @truncate(u8, p >> 16), @truncate(u8, p >> 24) });
             unreachable;
         }
         if (fmt.fmt.pix.width != self.width or fmt.fmt.pix.height != self.height) {
-            log.warn("Requested format is {d}x{d} but set to {d}x{d}.", .{ self.width, self.height, fmt.fmt.pix.width, fmt.fmt.pix.height });
-            self.width = fmt.fmt.pix.width;
-            self.height = fmt.fmt.pix.height;
+            if (fmt.fmt.pix.pixelformat == c.V4L2_PIX_FMT_MJPEG) {
+                log.warn("Requested format is {d}x{d} but set to {d}x{d}.", .{ self.width, self.height, fmt.fmt.pix.width, fmt.fmt.pix.height });
+                self.width = fmt.fmt.pix.width;
+                self.height = fmt.fmt.pix.height;
+            } else {
+                log.err("Requested format {d}x{d} is not supported.", .{ self.width, self.height });
+                unreachable;
+            }
         }
     }
 

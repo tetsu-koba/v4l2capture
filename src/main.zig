@@ -66,7 +66,6 @@ fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
     };
     if (mem.eql(u8, uri.scheme, "file")) {
         if (!mem.eql(u8, uri.path, "")) {
-            log.info("uri.path={s}", .{uri.path});
             outFile = try std.fs.cwd().createFile(url_string, .{});
             return true;
         }
@@ -95,7 +94,7 @@ pub fn main() !void {
     defer std.process.argsFree(alc, args);
 
     if (args.len < 3) {
-        std.debug.print("Usage: {s} /dev/videoX URL [width height framerate]\ndefault is 640x480@30fps\nURL is 'file://filename', 'tcp://hostname:port' or just filename.\n", .{args[0]});
+        std.debug.print("Usage: {s} /dev/videoX URL [width height framerate pixelformat]\ndefault is 640x480@30fps MJPG\nURL is 'file://filename', 'tcp://hostname:port' or just filename.\npixelformat is FourCC such as MJPG and YUYV.\n", .{args[0]});
         os.exit(1);
     }
     const devname = std.mem.sliceTo(args[1], 0);
@@ -103,6 +102,7 @@ pub fn main() !void {
     var width: u32 = 640;
     var height: u32 = 480;
     var framerate: u32 = 30;
+    var pixelformat = std.mem.sliceTo("MJPG", 0);
     if (args.len >= 4) {
         width = try std.fmt.parseInt(u32, args[3], 10);
     }
@@ -112,6 +112,9 @@ pub fn main() !void {
     if (args.len >= 6) {
         framerate = try std.fmt.parseInt(u32, args[5], 10);
     }
+    if (args.len >= 7) {
+        pixelformat = std.mem.sliceTo(args[6], 0);
+    }
 
     if (!try open(alc, url_string)) {
         log.err("Invalid URL: {s}", .{url_string});
@@ -119,7 +122,7 @@ pub fn main() !void {
     }
     defer close();
 
-    var cap = try v.Capturer.init(alc, devname, width, height, framerate);
+    var cap = try v.Capturer.init(alc, devname, width, height, framerate, pixelformat);
     defer cap.deinit();
 
     try cap.start();
