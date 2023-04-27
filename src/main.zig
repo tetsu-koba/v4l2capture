@@ -6,7 +6,8 @@ const time = std.time;
 const v = @import("v4l2capture.zig");
 
 const MAX_EVENT = 5;
-var frame_count: i64 = 0;
+var frame_count: usize = 0;
+var maxFrames: usize = 0;
 var running: bool = false;
 var outFile: ?std.fs.File = null;
 var tcp: ?std.net.Stream = null;
@@ -51,6 +52,9 @@ fn frameHandler(frame: []const u8) void {
             running = false;
         };
     }
+    if (maxFrames > 0 and frame_count >= maxFrames) {
+        running = false;
+    }
 }
 
 fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
@@ -94,7 +98,7 @@ pub fn main() !void {
     defer std.process.argsFree(alc, args);
 
     if (args.len < 3) {
-        std.debug.print("Usage: {s} /dev/videoX URL [width height framerate pixelformat]\ndefault is 640x480@30fps MJPG\nURL is 'file://filename', 'tcp://hostname:port' or just filename.\npixelformat is FourCC such as MJPG and YUYV.\n", .{args[0]});
+        std.debug.print("Usage: {s} /dev/videoX URL [width height framerate pixelformat max_frames]\nDefault is 640x480@30fps MJPG\nURL is 'file://filename', 'tcp://hostname:port' or just filename.\npixelformat is FourCC such as MJPG and YUYV.Defaut is MJPG.\nmax_frames is the number of frames to capture. Default is unlimited(0). Stop by Control-C.\n", .{args[0]});
         os.exit(1);
     }
     const devname = std.mem.sliceTo(args[1], 0);
@@ -114,6 +118,9 @@ pub fn main() !void {
     }
     if (args.len >= 7) {
         pixelformat = std.mem.sliceTo(args[6], 0);
+    }
+    if (args.len >= 8) {
+        maxFrames = try std.fmt.parseInt(usize, args[7], 10);
     }
 
     if (!try open(alc, url_string)) {
