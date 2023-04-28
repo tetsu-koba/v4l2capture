@@ -3,7 +3,7 @@ const log = std.log;
 const mem = std.mem;
 const os = std.os;
 const time = std.time;
-const v = @import("v4l2capture.zig");
+const Capturer = @import("v4l2capture.zig").Capturer;
 
 const MAX_EVENT = 5;
 var frame_count: usize = 0;
@@ -137,7 +137,7 @@ pub fn main() !void {
     }
     defer close();
 
-    var cap = try v.Capturer.init(alc, devname, width, height, framerate, pixelformat);
+    var cap = try Capturer.init(alc, devname, width, height, framerate, pixelformat);
     defer cap.deinit();
 
     try cap.start();
