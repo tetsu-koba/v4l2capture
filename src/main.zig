@@ -93,12 +93,20 @@ fn close() void {
 }
 
 pub fn main() !void {
+    const usage =
+        \\Usage: {s} /dev/videoX URL [width height framerate pixelformat max_frames]
+        \\	URL is 'file://filename', 'tcp://hostname:port' or just filename.
+        \\	Default width, height and framerate is 640x480@30fps
+        \\	pixelformat is FourCC such as MJPG and YUYV. Defaut is MJPG.
+        \\	max_frames is the number of frames to capture. Default is unlimited(0). Stop by Control-C.
+        \\
+    ;
     const alc = std.heap.page_allocator;
     const args = try std.process.argsAlloc(alc);
     defer std.process.argsFree(alc, args);
 
     if (args.len < 3) {
-        std.debug.print("Usage: {s} /dev/videoX URL [width height framerate pixelformat max_frames]\nDefault is 640x480@30fps MJPG\nURL is 'file://filename', 'tcp://hostname:port' or just filename.\npixelformat is FourCC such as MJPG and YUYV.Defaut is MJPG.\nmax_frames is the number of frames to capture. Default is unlimited(0). Stop by Control-C.\n", .{args[0]});
+        std.debug.print(usage, .{args[0]});
         os.exit(1);
     }
     const devname = std.mem.sliceTo(args[1], 0);
