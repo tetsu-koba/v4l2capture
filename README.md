@@ -2,16 +2,21 @@
 
 Capture MJPEG-format video from V4l2 camera device.
 
-## How to Build and Use Sample Programs
+## How to Build and Show Usage
 
 ```shell-session
 $ zig version
-0.11.0-dev.2696+867441845
+0.11.0-dev.2777+b95cdf0ae
 $ zig build
 $ ./zig-out/bin/v4l2capture 
-Usage: ./zig-out/bin/v4l2capture /dev/videoX out.mjpg [width height framerate]
-default is 640x480@30fps
+Usage: ./zig-out/bin/v4l2capture /dev/videoX URL [width height framerate pixelformat max_frames]
+	URL is 'file://filename', 'tcp://hostname:port' or just filename.
+	Default width, height and framerate is 640x480@30fps
+	pixelformat is FourCC such as MJPG and YUYV. Defaut is MJPG.
+	max_frames is the number of frames to capture. Default is unlimited(0). Stop by Control-C.
 ```
+
+## Save to local file
 
 ```shell-session
 $ ./zig-out/bin/v4l2capture /dev/video0 out.mjpg 320 240 30
@@ -22,7 +27,7 @@ info: 1682150185304:duration 24769ms, frame_count 743, 30.00fps
 Stop the process by entering ^C at an appropriate point.
 Although 320x240 was requested, the camera did not support it, so the message states that it has been changed to 320x180.
 
-## Playing the Generated mjpg File
+## Playing the generated mjpg file
 
 ```shell-session
 $ ffprobe out.mjpg
@@ -48,7 +53,7 @@ With the update of 2023/04/24, MJPEG can now be sent over TCP.
 On the receiver:
 
 ```shell-session
-$ ffplay -hide_banner -autoexit "tcp://:8999?listen=1"
+$ ffplay -hide_banner -autoexit "tcp://:8999?listen"
 ```
 
 
