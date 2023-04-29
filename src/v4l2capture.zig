@@ -96,14 +96,14 @@ pub const Capturer = struct {
 
     fn setDevice(self: *Self) !void {
         var fmt: c.struct_v4l2_format = undefined;
-        @memset(@ptrCast([*]u8, &fmt), 0, @sizeOf(c.struct_v4l2_format));
+        @memset(@ptrCast([*]u8, &fmt)[0..@sizeOf(c.struct_v4l2_format)], 0);
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         fmt.fmt.pix.width = self.width;
         fmt.fmt.pix.height = self.height;
         fmt.fmt.pix.pixelformat = self.pixelformat;
         fmt.fmt.pix.field = c.V4L2_FIELD_ANY;
         try self.xioctl(c.VIDIOC_S_FMT, @ptrToInt(&fmt));
-        @memset(@ptrCast([*]u8, &fmt), 0, @sizeOf(c.struct_v4l2_format));
+        @memset(@ptrCast([*]u8, &fmt)[0..@sizeOf(c.struct_v4l2_format)], 0);
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_G_FMT, @ptrToInt(&fmt));
         if (fmt.fmt.pix.pixelformat != self.pixelformat) {
@@ -125,14 +125,14 @@ pub const Capturer = struct {
 
     fn setFramerate(self: *Self) !void {
         var streamparm: c.struct_v4l2_streamparm = undefined;
-        @memset(@ptrCast([*]u8, &streamparm), 0, @sizeOf(c.struct_v4l2_streamparm));
+        @memset(@ptrCast([*]u8, &streamparm)[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
         streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_G_PARM, @ptrToInt(&streamparm));
         if (streamparm.parm.capture.capability & c.V4L2_CAP_TIMEPERFRAME != 0) {
             streamparm.parm.capture.timeperframe.numerator = 1;
             streamparm.parm.capture.timeperframe.denominator = self.framerate;
             try self.xioctl(c.VIDIOC_S_PARM, @ptrToInt(&streamparm));
-            @memset(@ptrCast([*]u8, &streamparm), 0, @sizeOf(c.struct_v4l2_streamparm));
+            @memset(@ptrCast([*]u8, &streamparm)[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
             streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
             try self.xioctl(c.VIDIOC_G_PARM, @ptrToInt(&streamparm));
             const r = streamparm.parm.capture.timeperframe.denominator;
@@ -147,7 +147,7 @@ pub const Capturer = struct {
 
     fn prepareBuffers(self: *Self) !void {
         var req: c.struct_v4l2_requestbuffers = undefined;
-        @memset(@ptrCast([*]u8, &req), 0, @sizeOf(c.struct_v4l2_requestbuffers));
+        @memset(@ptrCast([*]u8, &req)[0..@sizeOf(c.struct_v4l2_requestbuffers)], 0);
         req.count = Capturer.MIN_BUFFERS;
         req.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         req.memory = c.V4L2_MEMORY_MMAP;
@@ -159,7 +159,7 @@ pub const Capturer = struct {
         self.buffers = try self.alc.alloc(Buffer, req.count);
         for (self.buffers, 0..) |_, i| {
             var buff: c.struct_v4l2_buffer = undefined;
-            @memset(@ptrCast([*]u8, &buff), 0, @sizeOf(c.struct_v4l2_buffer));
+            @memset(@ptrCast([*]u8, &buff)[0..@sizeOf(c.struct_v4l2_buffer)], 0);
             buff.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
             buff.memory = c.V4L2_MEMORY_MMAP;
             buff.index = @intCast(c_uint, i);
@@ -171,7 +171,7 @@ pub const Capturer = struct {
 
     fn enqueueBuffer(self: *Self, index: usize) !void {
         var buf: c.struct_v4l2_buffer = undefined;
-        @memset(@ptrCast([*]u8, &buf), 0, @sizeOf(c.struct_v4l2_buffer));
+        @memset(@ptrCast([*]u8, &buf)[0..@sizeOf(c.struct_v4l2_buffer)], 0);
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
         buf.index = @intCast(c_uint, index);
