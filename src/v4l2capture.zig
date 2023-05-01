@@ -57,6 +57,14 @@ pub const Capturer = struct {
         self.closeDevice();
     }
 
+    pub inline fn getWidth(self: *Self) u32 {
+        return self.width;
+    }
+
+    pub inline fn getHeight(self: *Self) u32 {
+        return self.height;
+    }
+
     fn fourcc(f: []const u8) !u32 {
         if (f.len != 4) {
             log.err("Illegal fourcc format: {s}\n", .{f});
