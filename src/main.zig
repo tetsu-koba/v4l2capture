@@ -39,15 +39,17 @@ fn handleSignals(signal_fd: os.fd_t) !void {
     }
 }
 
-fn frameHandler(frame: []const u8) void {
+fn frameHandler(cap: *Capturer, frame: []const u8) void {
+    _ = cap;
     frame_count += 1;
+    const buf = frame;
     if (outFile) |f| {
-        f.writeAll(frame) catch |err| {
+        f.writeAll(buf) catch |err| {
             log.err("frameHandle: {s}", .{@errorName(err)});
             running = false;
         };
     } else if (tcp) |t| {
-        t.writeAll(frame) catch |err| {
+        t.writeAll(buf) catch |err| {
             log.err("frameHandle: {s}", .{@errorName(err)});
             running = false;
         };

@@ -225,13 +225,14 @@ pub const Capturer = struct {
         return self.fd;
     }
 
-    pub fn capture(self: *Self, frameHandler: *const fn ([]const u8) void) !void {
+    pub fn capture(self: *Self, frameHandler: *const fn (*Self, []const u8) void) !void {
         var buf: c.struct_v4l2_buffer = undefined;
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
 
         try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
-        frameHandler(self.buffers[buf.index].start[0..self.buffers[buf.index].length]);
+        const b = self.buffers[buf.index];
+        frameHandler(self, b.start[0..b.length]);
         try self.enqueueBuffer(buf.index);
     }
 };
