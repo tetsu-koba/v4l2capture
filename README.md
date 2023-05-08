@@ -1,6 +1,6 @@
 #  V4L2 video capturer written in Zig
 
-Capture MJPEG-format video from V4l2 camera device.
+Capture video frames from V4l2 camera device.
 
 ## How to Build and Show Usage
 
