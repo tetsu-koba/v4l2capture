@@ -124,12 +124,12 @@ pub fn main() !void {
         std.debug.print(usage, .{args[0]});
         os.exit(1);
     }
-    const devname = std.mem.sliceTo(args[1], 0);
-    const url_string = std.mem.sliceTo(args[2], 0);
+    const devname = args[1];
+    const url_string = args[2];
     var width: u32 = 640;
     var height: u32 = 480;
     var framerate: u32 = 30;
-    var pixelformat = std.mem.sliceTo("MJPG", 0);
+    var pixelformat: []const u8 = "MJPG";
     if (args.len >= 4) {
         width = try std.fmt.parseInt(u32, args[3], 10);
     }
@@ -140,7 +140,7 @@ pub fn main() !void {
         framerate = try std.fmt.parseInt(u32, args[5], 10);
     }
     if (args.len >= 7) {
-        pixelformat = std.mem.sliceTo(args[6], 0);
+        pixelformat = args[6];
     }
     if (args.len >= 8) {
         maxFrames = try std.fmt.parseInt(usize, args[7], 10);
