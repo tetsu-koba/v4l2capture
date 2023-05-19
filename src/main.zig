@@ -5,6 +5,7 @@ const os = std.os;
 const time = std.time;
 const Capturer = @import("v4l2capture.zig").Capturer;
 const pip = @import("set_pipe_size.zig");
+const vms = @import("vmsplice.zig");
 
 const MAX_EVENT = 5;
 var frame_count: usize = 0;
@@ -12,6 +13,7 @@ var maxFrames: usize = 0;
 var running: bool = false;
 var outFile: ?std.fs.File = null;
 var tcp: ?std.net.Stream = null;
+var isPipe = false;
 
 fn createSignalfd() !os.fd_t {
     var mask = os.empty_sigset;
@@ -44,7 +46,12 @@ fn frameHandler(cap: *Capturer, frame: []const u8) void {
     _ = cap;
     frame_count += 1;
     const buf = frame;
-    if (outFile) |f| {
+    if (isPipe) {
+        vms.vmspliceToFd(buf, outFile.?.handle) catch |err| {
+            log.err("frameHandle: {s}", .{@errorName(err)});
+            running = false;
+        };
+    } else if (outFile) |f| {
         f.writeAll(buf) catch |err| {
             log.err("frameHandle: {s}", .{@errorName(err)});
             running = false;
@@ -74,7 +81,11 @@ fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
     if (mem.eql(u8, uri.scheme, "file")) {
         if (!mem.eql(u8, uri.path, "")) {
             outFile = try std.fs.cwd().createFile(url_string, .{});
-            try pip.checkAndSetPipeMaxSize(outFile.?.handle);
+            const fd = outFile.?.handle;
+            if (try pip.isPipe(fd)) {
+                isPipe = true;
+                try pip.setPipeMaxSize(fd);
+            }
             return true;
         }
     } else if (mem.eql(u8, uri.scheme, "tcp")) {
