@@ -4,6 +4,7 @@ const mem = std.mem;
 const os = std.os;
 const time = std.time;
 const Capturer = @import("v4l2capture.zig").Capturer;
+const pip = @import("set_pipe_size.zig");
 
 const MAX_EVENT = 5;
 var frame_count: usize = 0;
@@ -73,6 +74,7 @@ fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
     if (mem.eql(u8, uri.scheme, "file")) {
         if (!mem.eql(u8, uri.path, "")) {
             outFile = try std.fs.cwd().createFile(url_string, .{});
+            try pip.checkAndSetPipeMaxSize(outFile.?.handle);
             return true;
         }
     } else if (mem.eql(u8, uri.scheme, "tcp")) {
