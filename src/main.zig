@@ -48,7 +48,12 @@ fn frameHandler(cap: *Capturer, frame: []const u8) void {
     const buf = frame;
     if (isPipe) {
         vms.vmspliceSingleBuffer(buf, outFile.?.handle) catch |err| {
-            log.err("frameHandle: {s}", .{@errorName(err)});
+            switch (err) {
+                error.BrokenPipe => {},
+                else => {
+                    log.err("frameHandle: {s}", .{@errorName(err)});
+                },
+            }
             running = false;
         };
     } else if (outFile) |f| {

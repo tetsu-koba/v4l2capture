@@ -12,7 +12,7 @@ fn getErrno() c_int {
     return c.__errno_location().*;
 }
 
-pub fn vmspliceSingleBuffer(buf: []const u8, fd: c_int) !void {
+pub fn vmspliceSingleBuffer(buf: []const u8, fd: os.fd_t) !void {
     var iov: c.struct_iovec = .{
         .iov_base = @ptrCast(?*anyopaque, @constCast(buf.ptr)),
         .iov_len = buf.len,
@@ -25,6 +25,9 @@ pub fn vmspliceSingleBuffer(buf: []const u8, fd: c_int) !void {
             switch (errno) {
                 c.EINTR => {
                     continue;
+                },
+                c.EPIPE => {
+                    return error.BrokenPipe;
                 },
                 else => {
                     std.log.err("vmsplice: errno={d}", .{errno});
