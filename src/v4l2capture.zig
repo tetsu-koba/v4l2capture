@@ -70,7 +70,7 @@ pub const Capturer = struct {
             log.err("Illegal fourcc format: {s}\n", .{f});
             unreachable;
         }
-        return @intCast(u32, f[0]) | @intCast(u32, f[1]) << 8 | @intCast(u32, f[2]) << 16 | @intCast(u32, f[3]) << 24;
+        return @as(u32, f[0]) | @as(u32, f[1]) << 8 | @as(u32, f[2]) << 16 | @as(u32, f[3]) << 24;
     }
 
     fn xioctl(self: *Self, request: u32, arg: usize) !void {
@@ -170,7 +170,7 @@ pub const Capturer = struct {
             @memset(@ptrCast([*]u8, &buff)[0..@sizeOf(c.struct_v4l2_buffer)], 0);
             buff.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
             buff.memory = c.V4L2_MEMORY_MMAP;
-            buff.index = @intCast(c_uint, i);
+            buff.index = @truncate(c_uint, i);
             try self.xioctl(c.VIDIOC_QUERYBUF, @ptrToInt(&buff));
             self.buffers[i].length = buff.length;
             self.buffers[i].start = try os.mmap(null, buff.length, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, self.fd, buff.m.offset);
@@ -182,7 +182,7 @@ pub const Capturer = struct {
         @memset(@ptrCast([*]u8, &buf)[0..@sizeOf(c.struct_v4l2_buffer)], 0);
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
-        buf.index = @intCast(c_uint, index);
+        buf.index = @truncate(c_uint, index);
         try self.xioctl(c.VIDIOC_QBUF, @ptrToInt(&buf));
     }
 
