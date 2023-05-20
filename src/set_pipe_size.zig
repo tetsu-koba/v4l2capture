@@ -25,16 +25,17 @@ pub fn setPipeMaxSize(fd: i32) !void {
     var reader = pipe_max_size_file.reader();
     var buffer: [128]u8 = undefined;
     const max_size_str = std.mem.trimRight(u8, buffer[0..(try reader.readAll(&buffer))], &std.ascii.whitespace);
-    const max_size = std.fmt.parseInt(i32, max_size_str, 10) catch |err| {
+    const max_size = std.fmt.parseInt(c_int, max_size_str, 10) catch |err| {
         std.debug.print("Failed to parse /proc/sys/fs/pipe-max-size: {}\n", .{err});
         return err;
     };
 
     // If the current size is less than the maximum size, set the pipe size to the maximum size
-    const cmax_size = @intCast(c_int, max_size);
     var current_size = c.fcntl(fd, c.F_GETPIPE_SZ);
-    if (current_size < cmax_size) {
-        _ = c.fcntl(fd, c.F_SETPIPE_SZ, cmax_size);
+    if (current_size < max_size) {
+        if (0 != c.fcntl(fd, c.F_SETPIPE_SZ, max_size)) {
+            return error.FaiedToSetPipeSize;
+        }
     }
 }
 
