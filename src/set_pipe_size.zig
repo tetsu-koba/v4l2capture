@@ -33,7 +33,7 @@ pub fn setPipeMaxSize(fd: i32) !void {
     // If the current size is less than the maximum size, set the pipe size to the maximum size
     var current_size = c.fcntl(fd, c.F_GETPIPE_SZ);
     if (current_size < max_size) {
-        if (0 != c.fcntl(fd, c.F_SETPIPE_SZ, max_size)) {
+        if (max_size != c.fcntl(fd, c.F_SETPIPE_SZ, max_size)) {
             return error.FaiedToSetPipeSize;
         }
     }
