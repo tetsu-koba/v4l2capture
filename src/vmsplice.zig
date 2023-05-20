@@ -8,7 +8,11 @@ const c = @cImport({
     @cInclude("errno.h");
 });
 
-pub fn vmspliceToFd(buf: []const u8, fd: c_int) !void {
+fn getErrno() c_int {
+    return c.__errno_location().*;
+}
+
+pub fn vmspliceSingleBuffer(buf: []const u8, fd: c_int) !void {
     var iov: c.struct_iovec = .{
         .iov_base = @ptrCast(?*anyopaque, @constCast(buf.ptr)),
         .iov_len = buf.len,
@@ -19,7 +23,19 @@ pub fn vmspliceToFd(buf: []const u8, fd: c_int) !void {
         if (n == buf.len) {
             return;
         }
-        if ((n < 0) and (c.__errno_location().* == c.EINTR)) continue;
+        if (n < 0) {
+            const errno = getErrno();
+            switch (errno) {
+                c.EINTR => {
+                    continue;
+                },
+                else => {
+                    std.log.err("vmsplice: errno={d}", .{errno});
+                },
+            }
+        } else {
+            std.log.err("vmsplice: return value mismatch: n={d}, buf.len={d}", .{ n, buf.len });
+        }
         return error.vmsplice;
     }
     unreachable;
