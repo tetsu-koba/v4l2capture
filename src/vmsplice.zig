@@ -17,21 +17,18 @@ pub fn vmspliceSingleBuffer(buf: []const u8, fd: os.fd_t) !void {
         .iov_base = @ptrCast(?*anyopaque, @constCast(buf.ptr)),
         .iov_len = buf.len,
     };
-    var n: isize = undefined;
     while (true) {
-        n = c.vmsplice(fd, &iov, 1, @bitCast(c_uint, c.SPLICE_F_GIFT));
+        const n = c.vmsplice(fd, &iov, 1, @bitCast(c_uint, c.SPLICE_F_GIFT));
         if (n < 0) {
             const errno = getErrno();
             switch (errno) {
-                c.EINTR => {
-                    continue;
-                },
-                c.EPIPE => {
-                    return error.BrokenPipe;
-                },
-                else => {
-                    std.log.err("vmsplice: errno={d}", .{errno});
-                },
+                c.EINTR => continue,
+                c.EAGAIN => unreachable,
+                c.EPIPE => return error.BrokenPipe,
+                c.EBADF => return error.InvalidFileDescriptor,
+                c.EINVAL => return error.InvalidArgument,
+                c.ENOMEM => return error.SystemResources,
+                else => std.log.err("vmsplice: errno={d}", .{errno}),
             }
         } else if (@bitCast(usize, n) == iov.iov_len) {
             return;
@@ -42,7 +39,7 @@ pub fn vmspliceSingleBuffer(buf: []const u8, fd: os.fd_t) !void {
             iov.iov_base = @intToPtr(?*anyopaque, @ptrToInt(iov.iov_base) + un);
             continue;
         }
-        return error.vmsplice;
+        return error.Vmsplice;
     }
     unreachable;
 }
