@@ -26,7 +26,7 @@ fn createSignalfd() !os.fd_t {
 fn handleSignals(signal_fd: os.fd_t) !void {
     var buf: [@sizeOf(os.linux.signalfd_siginfo)]u8 align(8) = undefined;
     if (buf.len != try os.read(signal_fd, &buf)) {
-        return os.ReadError.ReadError;
+        return os.ReadError.InputOutput;
     }
     const info = @ptrCast(*os.linux.signalfd_siginfo, &buf);
     switch (info.signo) {
