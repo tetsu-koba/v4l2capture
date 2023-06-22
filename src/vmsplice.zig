@@ -36,7 +36,7 @@ pub fn vmspliceSingleBuffer(buf: []const u8, fd: os.fd_t) !void {
             //std.log.info("vmsplice: return value mismatch: n={d}, iov_len={d}", .{ n, iov.iov_len });
             const un = @bitCast(usize, n);
             iov.iov_len -= un;
-            iov.iov_base = @intToPtr(?*anyopaque, @ptrToInt(iov.iov_base) + un);
+            iov.iov_base = @ptrFromInt(?*anyopaque, @intFromPtr(iov.iov_base) + un);
             continue;
         }
         return error.Vmsplice;

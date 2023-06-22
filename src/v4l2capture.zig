@@ -91,7 +91,7 @@ pub const Capturer = struct {
 
     fn capDevice(self: *Self) !void {
         var cap: c.struct_v4l2_capability = undefined;
-        try self.xioctl(c.VIDIOC_QUERYCAP, @ptrToInt(&cap));
+        try self.xioctl(c.VIDIOC_QUERYCAP, @intFromPtr(&cap));
         if (0 == cap.capabilities & c.V4L2_CAP_VIDEO_CAPTURE) {
             log.err("no video capture\n", .{});
             unreachable;
@@ -110,10 +110,10 @@ pub const Capturer = struct {
         fmt.fmt.pix.height = self.height;
         fmt.fmt.pix.pixelformat = self.pixelformat;
         fmt.fmt.pix.field = c.V4L2_FIELD_ANY;
-        try self.xioctl(c.VIDIOC_S_FMT, @ptrToInt(&fmt));
+        try self.xioctl(c.VIDIOC_S_FMT, @intFromPtr(&fmt));
         @memset(@ptrCast([*]u8, &fmt)[0..@sizeOf(c.struct_v4l2_format)], 0);
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        try self.xioctl(c.VIDIOC_G_FMT, @ptrToInt(&fmt));
+        try self.xioctl(c.VIDIOC_G_FMT, @intFromPtr(&fmt));
         if (fmt.fmt.pix.pixelformat != self.pixelformat) {
             const p = self.pixelformat;
             log.err("pixelformat {c}{c}{c}{c} is not supported\n", .{ @truncate(u8, p), @truncate(u8, p >> 8), @truncate(u8, p >> 16), @truncate(u8, p >> 24) });
@@ -135,14 +135,14 @@ pub const Capturer = struct {
         var streamparm: c.struct_v4l2_streamparm = undefined;
         @memset(@ptrCast([*]u8, &streamparm)[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
         streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        try self.xioctl(c.VIDIOC_G_PARM, @ptrToInt(&streamparm));
+        try self.xioctl(c.VIDIOC_G_PARM, @intFromPtr(&streamparm));
         if (streamparm.parm.capture.capability & c.V4L2_CAP_TIMEPERFRAME != 0) {
             streamparm.parm.capture.timeperframe.numerator = 1;
             streamparm.parm.capture.timeperframe.denominator = self.framerate;
-            try self.xioctl(c.VIDIOC_S_PARM, @ptrToInt(&streamparm));
+            try self.xioctl(c.VIDIOC_S_PARM, @intFromPtr(&streamparm));
             @memset(@ptrCast([*]u8, &streamparm)[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
             streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            try self.xioctl(c.VIDIOC_G_PARM, @ptrToInt(&streamparm));
+            try self.xioctl(c.VIDIOC_G_PARM, @intFromPtr(&streamparm));
             const r = streamparm.parm.capture.timeperframe.denominator;
             if (r != self.framerate) {
                 log.warn("Requested framerate is {d} but set to {d}.", .{ self.framerate, r });
@@ -159,7 +159,7 @@ pub const Capturer = struct {
         req.count = Capturer.MIN_BUFFERS;
         req.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         req.memory = c.V4L2_MEMORY_MMAP;
-        try self.xioctl(c.VIDIOC_REQBUFS, @ptrToInt(&req));
+        try self.xioctl(c.VIDIOC_REQBUFS, @intFromPtr(&req));
         if (req.count < MIN_BUFFERS) {
             log.err("Insufficient buffer memory on camera\n", .{});
             unreachable;
@@ -171,7 +171,7 @@ pub const Capturer = struct {
             buff.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
             buff.memory = c.V4L2_MEMORY_MMAP;
             buff.index = @truncate(c_uint, i);
-            try self.xioctl(c.VIDIOC_QUERYBUF, @ptrToInt(&buff));
+            try self.xioctl(c.VIDIOC_QUERYBUF, @intFromPtr(&buff));
             self.buffers[i].length = buff.length;
             self.buffers[i].start = try os.mmap(null, buff.length, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, self.fd, buff.m.offset);
         }
@@ -183,7 +183,7 @@ pub const Capturer = struct {
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
         buf.index = @truncate(c_uint, index);
-        try self.xioctl(c.VIDIOC_QBUF, @ptrToInt(&buf));
+        try self.xioctl(c.VIDIOC_QBUF, @intFromPtr(&buf));
     }
 
     fn enqueueBuffers(self: *Self) !void {
@@ -194,12 +194,12 @@ pub const Capturer = struct {
 
     fn streamStart(self: *Self) !void {
         const t: c.enum_v4l2_buf_type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        try self.xioctl(c.VIDIOC_STREAMON, @ptrToInt(&t));
+        try self.xioctl(c.VIDIOC_STREAMON, @intFromPtr(&t));
     }
 
     fn streamStop(self: *Self) !void {
         const t: c.enum_v4l2_buf_type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        try self.xioctl(c.VIDIOC_STREAMOFF, @ptrToInt(&t));
+        try self.xioctl(c.VIDIOC_STREAMOFF, @intFromPtr(&t));
     }
 
     fn munmapBuffer(self: *Self) void {
@@ -230,7 +230,7 @@ pub const Capturer = struct {
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
 
-        try self.xioctl(c.VIDIOC_DQBUF, @ptrToInt(&buf));
+        try self.xioctl(c.VIDIOC_DQBUF, @intFromPtr(&buf));
         const b = self.buffers[buf.index];
         frameHandler(self, b.start[0..b.length]);
         try self.enqueueBuffer(buf.index);

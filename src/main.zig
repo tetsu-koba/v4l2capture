@@ -200,5 +200,5 @@ pub fn main() !void {
         }
     }
     const duration = time.milliTimestamp() - start_time;
-    log.info("{d}:duration {d}ms, frame_count {d}, {d:.2}fps", .{ time.milliTimestamp(), duration, frame_count, @intToFloat(f32, frame_count) / @intToFloat(f32, duration) * 1000 });
+    log.info("{d}:duration {d}ms, frame_count {d}, {d:.2}fps", .{ time.milliTimestamp(), duration, frame_count, @floatFromInt(f32, frame_count) / @floatFromInt(f32, duration) * 1000 });
 }
