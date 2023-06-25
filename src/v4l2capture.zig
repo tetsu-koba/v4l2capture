@@ -232,7 +232,7 @@ pub const Capturer = struct {
 
         try self.xioctl(c.VIDIOC_DQBUF, @intFromPtr(&buf));
         const b = self.buffers[buf.index];
-        frameHandler(self, b.start[0..b.length]);
+        frameHandler(self, b.start[0..buf.bytesused]);
         try self.enqueueBuffer(buf.index);
     }
 };
