@@ -104,19 +104,19 @@ pub const Capturer = struct {
 
     fn setDevice(self: *Self) !void {
         var fmt: c.struct_v4l2_format = undefined;
-        @memset(@ptrCast([*]u8, &fmt)[0..@sizeOf(c.struct_v4l2_format)], 0);
+        @memset(@as([*]u8, @ptrCast(&fmt))[0..@sizeOf(c.struct_v4l2_format)], 0);
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         fmt.fmt.pix.width = self.width;
         fmt.fmt.pix.height = self.height;
         fmt.fmt.pix.pixelformat = self.pixelformat;
         fmt.fmt.pix.field = c.V4L2_FIELD_ANY;
         try self.xioctl(c.VIDIOC_S_FMT, @intFromPtr(&fmt));
-        @memset(@ptrCast([*]u8, &fmt)[0..@sizeOf(c.struct_v4l2_format)], 0);
+        @memset(@as([*]u8, @ptrCast(&fmt))[0..@sizeOf(c.struct_v4l2_format)], 0);
         fmt.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_G_FMT, @intFromPtr(&fmt));
         if (fmt.fmt.pix.pixelformat != self.pixelformat) {
             const p = self.pixelformat;
-            log.err("pixelformat {c}{c}{c}{c} is not supported\n", .{ @truncate(u8, p), @truncate(u8, p >> 8), @truncate(u8, p >> 16), @truncate(u8, p >> 24) });
+            log.err("pixelformat {c}{c}{c}{c} is not supported\n", .{ @as(u8, @truncate(p)), @as(u8, @truncate(p >> 8)), @as(u8, @truncate(p >> 16)), @as(u8, @truncate(p >> 24)) });
             unreachable;
         }
         if (fmt.fmt.pix.width != self.width or fmt.fmt.pix.height != self.height) {
@@ -133,14 +133,14 @@ pub const Capturer = struct {
 
     fn setFramerate(self: *Self) !void {
         var streamparm: c.struct_v4l2_streamparm = undefined;
-        @memset(@ptrCast([*]u8, &streamparm)[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
+        @memset(@as([*]u8, @ptrCast(&streamparm))[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
         streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         try self.xioctl(c.VIDIOC_G_PARM, @intFromPtr(&streamparm));
         if (streamparm.parm.capture.capability & c.V4L2_CAP_TIMEPERFRAME != 0) {
             streamparm.parm.capture.timeperframe.numerator = 1;
             streamparm.parm.capture.timeperframe.denominator = self.framerate;
             try self.xioctl(c.VIDIOC_S_PARM, @intFromPtr(&streamparm));
-            @memset(@ptrCast([*]u8, &streamparm)[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
+            @memset(@as([*]u8, @ptrCast(&streamparm))[0..@sizeOf(c.struct_v4l2_streamparm)], 0);
             streamparm.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
             try self.xioctl(c.VIDIOC_G_PARM, @intFromPtr(&streamparm));
             const r = streamparm.parm.capture.timeperframe.denominator;
@@ -155,7 +155,7 @@ pub const Capturer = struct {
 
     fn prepareBuffers(self: *Self) !void {
         var req: c.struct_v4l2_requestbuffers = undefined;
-        @memset(@ptrCast([*]u8, &req)[0..@sizeOf(c.struct_v4l2_requestbuffers)], 0);
+        @memset(@as([*]u8, @ptrCast(&req))[0..@sizeOf(c.struct_v4l2_requestbuffers)], 0);
         req.count = Capturer.MIN_BUFFERS;
         req.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         req.memory = c.V4L2_MEMORY_MMAP;
@@ -167,10 +167,10 @@ pub const Capturer = struct {
         self.buffers = try self.alc.alloc(Buffer, req.count);
         for (self.buffers, 0..) |_, i| {
             var buff: c.struct_v4l2_buffer = undefined;
-            @memset(@ptrCast([*]u8, &buff)[0..@sizeOf(c.struct_v4l2_buffer)], 0);
+            @memset(@as([*]u8, @ptrCast(&buff))[0..@sizeOf(c.struct_v4l2_buffer)], 0);
             buff.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
             buff.memory = c.V4L2_MEMORY_MMAP;
-            buff.index = @truncate(c_uint, i);
+            buff.index = @as(c_uint, @truncate(i));
             try self.xioctl(c.VIDIOC_QUERYBUF, @intFromPtr(&buff));
             self.buffers[i].length = buff.length;
             self.buffers[i].start = try os.mmap(null, buff.length, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, self.fd, buff.m.offset);
@@ -179,10 +179,10 @@ pub const Capturer = struct {
 
     fn enqueueBuffer(self: *Self, index: usize) !void {
         var buf: c.struct_v4l2_buffer = undefined;
-        @memset(@ptrCast([*]u8, &buf)[0..@sizeOf(c.struct_v4l2_buffer)], 0);
+        @memset(@as([*]u8, @ptrCast(&buf))[0..@sizeOf(c.struct_v4l2_buffer)], 0);
         buf.type = c.V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = c.V4L2_MEMORY_MMAP;
-        buf.index = @truncate(c_uint, index);
+        buf.index = @as(c_uint, @truncate(index));
         try self.xioctl(c.VIDIOC_QBUF, @intFromPtr(&buf));
     }
 

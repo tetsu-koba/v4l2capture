@@ -28,7 +28,7 @@ fn handleSignals(signal_fd: os.fd_t) !void {
     if (buf.len != try os.read(signal_fd, &buf)) {
         return os.ReadError.InputOutput;
     }
-    const info = @ptrCast(*os.linux.signalfd_siginfo, &buf);
+    const info: *os.linux.signalfd_siginfo = @ptrCast(&buf);
     switch (info.signo) {
         os.linux.SIG.INT => {
             log.info("{d}:Got SIGINT", .{time.milliTimestamp()});
@@ -200,5 +200,5 @@ pub fn main() !void {
         }
     }
     const duration = time.milliTimestamp() - start_time;
-    log.info("{d}:duration {d}ms, frame_count {d}, {d:.2}fps", .{ time.milliTimestamp(), duration, frame_count, @floatFromInt(f32, frame_count) / @floatFromInt(f32, duration) * 1000 });
+    log.info("{d}:duration {d}ms, frame_count {d}, {d:.2}fps", .{ time.milliTimestamp(), duration, frame_count, @as(f32, @floatFromInt(frame_count)) / @as(f32, @floatFromInt(duration)) * 1000 });
 }
