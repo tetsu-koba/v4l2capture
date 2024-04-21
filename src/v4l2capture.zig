@@ -1,5 +1,5 @@
 const std = @import("std");
-const os = std.os;
+const posix = std.posix;
 const log = std.log;
 const time = std.time;
 const c = @cImport({
@@ -14,7 +14,7 @@ const Buffer = struct {
 pub const Capturer = struct {
     verbose: bool = false,
     buffers: []Buffer = undefined,
-    fd: os.fd_t = undefined,
+    fd: posix.fd_t = undefined,
     alc: std.mem.Allocator,
     devname: []const u8,
     width: u32,
@@ -76,17 +76,17 @@ pub const Capturer = struct {
     fn xioctl(self: *Self, request: u32, arg: usize) !void {
         var rc: usize = undefined;
         while (true) {
-            rc = os.linux.ioctl(self.fd, request, arg);
-            switch (os.linux.getErrno(rc)) {
+            rc = std.os.linux.ioctl(self.fd, request, arg);
+            switch (posix.errno(rc)) {
                 .SUCCESS => return,
                 .INTR => continue,
-                else => |err| return os.unexpectedErrno(err),
+                else => |err| return posix.unexpectedErrno(err),
             }
         }
     }
 
     fn openDevice(self: *Self) !void {
-        self.fd = try os.open(self.devname, os.O.RDWR, 0o664);
+        self.fd = try posix.open(self.devname, .{ .ACCMODE = .RDWR }, 0o664);
     }
 
     fn capDevice(self: *Self) !void {
@@ -173,7 +173,7 @@ pub const Capturer = struct {
             buff.index = @as(c_uint, @truncate(i));
             try self.xioctl(c.VIDIOC_QUERYBUF, @intFromPtr(&buff));
             self.buffers[i].length = buff.length;
-            self.buffers[i].start = try os.mmap(null, buff.length, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, self.fd, buff.m.offset);
+            self.buffers[i].start = try posix.mmap(null, buff.length, posix.PROT.READ | posix.PROT.WRITE, .{ .TYPE = .SHARED }, self.fd, buff.m.offset);
         }
     }
 
@@ -204,13 +204,13 @@ pub const Capturer = struct {
 
     fn munmapBuffer(self: *Self) void {
         for (self.buffers, 0..) |_, i| {
-            os.munmap(self.buffers[i].start);
+            posix.munmap(self.buffers[i].start);
         }
         self.alc.free(self.buffers);
     }
 
     fn closeDevice(self: *Self) void {
-        os.close(self.fd);
+        posix.close(self.fd);
     }
 
     pub fn start(self: *Self) !void {
@@ -221,7 +221,7 @@ pub const Capturer = struct {
         self.streamStop() catch unreachable;
     }
 
-    pub fn getFd(self: *Self) os.fd_t {
+    pub fn getFd(self: *Self) posix.fd_t {
         return self.fd;
     }
 

@@ -2,6 +2,7 @@ const std = @import("std");
 const log = std.log;
 const mem = std.mem;
 const os = std.os;
+const posix = std.posix;
 const time = std.time;
 const Capturer = @import("v4l2capture.zig").Capturer;
 const pip = @import("set_pipe_size.zig");
@@ -15,18 +16,18 @@ var outFile: ?std.fs.File = null;
 var tcp: ?std.net.Stream = null;
 var isPipe = false;
 
-fn createSignalfd() !os.fd_t {
-    var mask = os.empty_sigset;
+fn createSignalfd() !posix.fd_t {
+    var mask = posix.empty_sigset;
     os.linux.sigaddset(&mask, os.linux.SIG.INT);
     os.linux.sigaddset(&mask, os.linux.SIG.TERM);
     _ = os.linux.sigprocmask(os.linux.SIG.BLOCK, &mask, null);
-    return try os.signalfd(-1, &mask, os.linux.SFD.CLOEXEC);
+    return try posix.signalfd(-1, &mask, os.linux.SFD.CLOEXEC);
 }
 
-fn handleSignals(signal_fd: os.fd_t) !void {
+fn handleSignals(signal_fd: posix.fd_t) !void {
     var buf: [@sizeOf(os.linux.signalfd_siginfo)]u8 align(8) = undefined;
-    if (buf.len != try os.read(signal_fd, &buf)) {
-        return os.ReadError.InputOutput;
+    if (buf.len != try posix.read(signal_fd, &buf)) {
+        return posix.ReadError.InputOutput;
     }
     const info: *os.linux.signalfd_siginfo = @ptrCast(&buf);
     switch (info.signo) {
@@ -75,7 +76,7 @@ fn frameHandler(cap: *Capturer, frame: []const u8) void {
 fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
     const uri = std.Uri.parse(url_string) catch std.Uri{
         .scheme = "file",
-        .path = url_string,
+        .path = .{ .raw = url_string },
         .host = null,
         .user = null,
         .password = null,
@@ -84,7 +85,7 @@ fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
         .fragment = null,
     };
     if (mem.eql(u8, uri.scheme, "file")) {
-        if (!mem.eql(u8, uri.path, "")) {
+        if (!mem.eql(u8, uri.path.raw, "")) {
             outFile = try std.fs.cwd().createFile(url_string, .{});
             const fd = outFile.?.handle;
             if (try pip.isPipe(fd)) {
@@ -96,7 +97,7 @@ fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
     } else if (mem.eql(u8, uri.scheme, "tcp")) {
         if (uri.host) |host| {
             if (uri.port) |port| {
-                tcp = try std.net.tcpConnectToHost(alc, host, port);
+                tcp = try std.net.tcpConnectToHost(alc, host.raw, port);
                 return true;
             }
         }
@@ -127,7 +128,7 @@ pub fn main() !void {
 
     if (args.len < 3) {
         std.debug.print(usage, .{args[0]});
-        os.exit(1);
+        posix.exit(1);
     }
     const devname = args[1];
     const url_string = args[2];
@@ -153,7 +154,7 @@ pub fn main() !void {
 
     if (!try open(alc, url_string)) {
         log.err("Invalid URL: {s}", .{url_string});
-        os.exit(1);
+        posix.exit(1);
     }
     defer close();
 
@@ -163,28 +164,28 @@ pub fn main() !void {
     try cap.start();
     defer cap.stop();
 
-    const epoll_fd = try os.epoll_create1(os.linux.EPOLL.CLOEXEC);
-    defer os.close(epoll_fd);
+    const epoll_fd = try posix.epoll_create1(os.linux.EPOLL.CLOEXEC);
+    defer posix.close(epoll_fd);
     var read_event = os.linux.epoll_event{
         .events = os.linux.EPOLL.IN,
         .data = os.linux.epoll_data{ .fd = cap.getFd() },
     };
-    try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
+    try posix.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, read_event.data.fd, &read_event);
 
     const signal_fd = try createSignalfd();
-    defer os.close(signal_fd);
+    defer posix.close(signal_fd);
     var signal_event = os.linux.epoll_event{
         .events = os.linux.EPOLL.IN,
         .data = os.linux.epoll_data{ .fd = signal_fd },
     };
-    try os.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, signal_event.data.fd, &signal_event);
+    try posix.epoll_ctl(epoll_fd, os.linux.EPOLL.CTL_ADD, signal_event.data.fd, &signal_event);
     const timeout = 5000;
 
     running = true;
-    var start_time = time.milliTimestamp();
+    const start_time = time.milliTimestamp();
     while (running) {
-        var events: [MAX_EVENT]os.linux.epoll_event = .{};
-        const event_count = os.epoll_wait(epoll_fd, &events, timeout);
+        var events: [MAX_EVENT]os.linux.epoll_event = undefined;
+        const event_count = posix.epoll_wait(epoll_fd, &events, timeout);
         if (event_count == 0) {
             log.info("{d}:timeout", .{time.milliTimestamp()});
             continue;

@@ -1,6 +1,5 @@
 const std = @import("std");
 const fs = std.fs;
-const os = std.os;
 const c = @cImport({
     @cDefine("_GNU_SOURCE", "");
     @cInclude("fcntl.h");
@@ -12,7 +11,7 @@ fn getErrno() c_int {
     return c.__errno_location().*;
 }
 
-pub fn vmspliceSingleBuffer(buf: []const u8, fd: os.fd_t) !void {
+pub fn vmspliceSingleBuffer(buf: []const u8, fd: std.posix.fd_t) !void {
     var iov: c.struct_iovec = .{
         .iov_base = @as(?*anyopaque, @ptrCast(@constCast(buf.ptr))),
         .iov_len = buf.len,

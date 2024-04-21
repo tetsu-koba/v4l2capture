@@ -1,5 +1,6 @@
 const std = @import("std");
 const fs = std.fs;
+const posix = std.posix;
 const os = std.os;
 const c = @cImport({
     @cDefine("_GNU_SOURCE", "");
@@ -8,7 +9,7 @@ const c = @cImport({
 });
 
 // Check if the given file descriptor is a pipe
-pub fn isPipe(fd: os.fd_t) !bool {
+pub fn isPipe(fd: posix.fd_t) !bool {
     var stat: os.linux.Stat = undefined;
     if (0 != os.linux.fstat(fd, &stat)) {
         return error.Fstat;
@@ -17,7 +18,7 @@ pub fn isPipe(fd: os.fd_t) !bool {
 }
 
 // Set the size of the given pipe file descriptor to the maximum size
-pub fn setPipeMaxSize(fd: os.fd_t) !void {
+pub fn setPipeMaxSize(fd: posix.fd_t) !void {
     // Read the maximum pipe size
     var pipe_max_size_file = try fs.cwd().openFile("/proc/sys/fs/pipe-max-size", .{});
     defer pipe_max_size_file.close();
@@ -31,7 +32,7 @@ pub fn setPipeMaxSize(fd: os.fd_t) !void {
     };
 
     // If the current size is less than the maximum size, set the pipe size to the maximum size
-    var current_size = c.fcntl(fd, c.F_GETPIPE_SZ);
+    const current_size = c.fcntl(fd, c.F_GETPIPE_SZ);
     if (current_size < max_size) {
         if (max_size != c.fcntl(fd, c.F_SETPIPE_SZ, max_size)) {
             return error.FaiedToSetPipeSize;
