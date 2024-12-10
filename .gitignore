@@ -1,6 +1,7 @@
 *~
 zig-cache
 zig-out
+.zig-cache
 *.jpg
 *.mjpeg
 *.mjpg
