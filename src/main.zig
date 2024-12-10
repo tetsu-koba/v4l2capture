@@ -116,10 +116,10 @@ fn close() void {
 pub fn main() !void {
     const usage =
         \\Usage: {s} /dev/videoX URL [width height framerate pixelformat max_frames]
-        \\	URL is 'file://filename', 'tcp://hostname:port' or just filename.
-        \\	Default width, height and framerate is 640x480@30fps
-        \\	pixelformat is FourCC such as MJPG and YUYV. Defaut is MJPG.
-        \\	max_frames is the number of frames to capture. Default is unlimited(0). Stop by Control-C.
+        \\   URL is 'file://filename', 'tcp://hostname:port' or just filename.
+        \\   Default width, height and framerate is 640x480@30fps
+        \\   pixelformat is FourCC such as MJPG and YUYV. Defaut is MJPG.
+        \\   max_frames is the number of frames to capture. Default is unlimited(0). Stop by Control-C.
         \\
     ;
     const alc = std.heap.page_allocator;
