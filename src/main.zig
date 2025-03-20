@@ -97,7 +97,7 @@ fn open(alc: std.mem.Allocator, url_string: []const u8) !bool {
     } else if (mem.eql(u8, uri.scheme, "tcp")) {
         if (uri.host) |host| {
             if (uri.port) |port| {
-                tcp = try std.net.tcpConnectToHost(alc, host.raw, port);
+                tcp = try std.net.tcpConnectToHost(alc, host.percent_encoded, port);
                 return true;
             }
         }

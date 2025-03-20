@@ -7,7 +7,7 @@ const c = @cImport({
 });
 
 const Buffer = struct {
-    start: []align(std.heap.page_size_min) u8,
+    start: []align(std.mem.page_size) u8,
     length: usize,
 };
 
