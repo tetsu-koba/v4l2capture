@@ -17,10 +17,10 @@ var tcp: ?std.net.Stream = null;
 var isPipe = false;
 
 fn createSignalfd() !posix.fd_t {
-    var mask = posix.empty_sigset;
-    os.linux.sigaddset(&mask, os.linux.SIG.INT);
-    os.linux.sigaddset(&mask, os.linux.SIG.TERM);
-    _ = os.linux.sigprocmask(os.linux.SIG.BLOCK, &mask, null);
+    var mask = posix.sigemptyset();
+    posix.sigaddset(&mask, os.linux.SIG.INT);
+    posix.sigaddset(&mask, os.linux.SIG.TERM);
+    posix.sigprocmask(os.linux.SIG.BLOCK, &mask, null);
     return try posix.signalfd(-1, &mask, os.linux.SFD.CLOEXEC);
 }
 
